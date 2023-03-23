@@ -26,8 +26,8 @@ impl OnlyArgs for Args {
             env!("CARGO_BIN_NAME"),
             " [flags] [options] [numbers...]\n",
             "\nFlags:\n",
-            "  -u, --username <name>  Your username.\n",
-            "  -o, --output [path]    Output file path.\n",
+            "  -u --username <name>  Your username.\n",
+            "  -o --output [path]    Output file path.\n",
             "\nOptions:\n",
             "  -h --help     Show this help message.\n",
             "  --version     Show the application version.\n",
@@ -177,6 +177,7 @@ fn run() -> Result<(), Error> {
 
         if let Some(path) = &args.output {
             std::fs::write(path, msg + "\n")?;
+            println!("Sums written to {path:?}");
         } else {
             println!("{msg}");
         }

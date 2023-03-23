@@ -125,7 +125,7 @@ Worst case is about half a second on this setup.
 
 ### Convenience
 
-Argument parsing is dead simple (assuming your preferred DSL is opinionated and no-nonsense). There is no reason overcomplicating it by supporting multiple forms like `--argument 123` and `--argument=123` or `-a 123` and `-a123`. Just pick one!
+Argument parsing is dead simple (assuming your preferred DSL is opinionated and no-nonsense). There is no reason to overcomplicate it by supporting multiple forms like `--argument 123` and `--argument=123` or `-a 123` and `-a123`. _Just pick one!_
 
 The provided examples use the former in both cases: `--argument 123` and `-a 123` are accepted for arguments with a value. Supporting both long and short argument names is just a pattern!
 
@@ -191,8 +191,8 @@ Usage:
   full [flags] [options] [numbers...]
 
 Flags:
-  -u, --username <name>  Your username.
-  -o, --output [path]    Output file path.
+  -u --username <name>  Your username.
+  -o --output [path]    Output file path.
 
 Options:
   -h --help     Show this help message.
@@ -243,4 +243,63 @@ The sum of 1 + 2 + 3 is 6
     help: false,
     version: false,
 }
+```
+
+#### Run with `--output` argument
+
+```bash
+$ cargo run --example full -- -u parasyte 1 2 3 --output sums.txt
+    Finished dev [unoptimized + debuginfo] target(s) in 0.00s
+     Running `target\debug\examples\full.exe -u parasyte 1 2 3 --output sums.txt`
+Hello, parasyte!
+Sums written to "sums.txt"
+
+[examples\full.rs:188] args = Args {
+    username: "parasyte",
+    output: Some(
+        "sums.txt",
+    ),
+    numbers: [
+        1,
+        2,
+        3,
+    ],
+    help: false,
+    version: false,
+}
+
+$ cat sums.txt
+The sum of 1 + 2 + 3 is 6
+```
+
+#### Use the `--` sentinel to try dumping all trailing args to the `numbers` field
+
+```bash
+$ cargo run --example full -- -u parasyte -- 1 2 3 --output sums.txt
+    Finished dev [unoptimized + debuginfo] target(s) in 0.00s
+     Running `target\debug\examples\full.exe -u parasyte -- 1 2 3 --output sums.txt`
+onlyargs v0.1.0
+Obsessively tiny argument parsing
+
+A basic argument parsing example with `onlyargs`.
+Sums a list of numbers and writes the result to a file or standard output.
+
+Usage:
+  full [flags] [options] [numbers...]
+
+Flags:
+  -u --username <name>  Your username.
+  -o --output [path]    Output file path.
+
+Options:
+  -h --help     Show this help message.
+  --version     Show the application version.
+
+Numbers:
+  A list of numbers to sum.
+
+Error: Argument parsing error
+  Caused by: Int parsing error for argument `<POSITIONAL>`: value="--output"
+  Caused by: invalid digit found in string
+error: process didn't exit successfully: `target\debug\examples\full.exe -u parasyte -- 1 2 3 --output sums.txt` (exit code: 1)
 ```
