@@ -194,7 +194,9 @@ fn main() -> ExitCode {
     match run() {
         Ok(_) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("{}", Args::help());
+            if matches!(err, Error::Cli(_)) {
+                eprintln!("{}", Args::help());
+            }
 
             eprintln!("Error: {err}");
             for source in err.sources().skip(1) {
