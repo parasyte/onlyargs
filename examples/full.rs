@@ -103,8 +103,11 @@ impl OnlyArgs for Args {
             }
         }
 
-        // Required arguments.
-        let username = username.ok_or_else(|| CliError::MissingRequired("username".to_string()))?;
+        // Required arguments are set to defaults if `--help` or `--version` are present.
+        let username = (help || version)
+            .then(String::new)
+            .or(username)
+            .ok_or_else(|| CliError::MissingRequired("username".to_string()))?;
 
         Ok(Self {
             username,
@@ -155,7 +158,7 @@ impl From<std::io::Error> for Error {
 fn run() -> Result<(), Error> {
     let args: Args = onlyargs::parse()?;
 
-    // Handle `help` and `version` options.
+    // Handle `--help` and `--version` options.
     if args.help {
         args.show_help_and_exit();
     } else if args.version {

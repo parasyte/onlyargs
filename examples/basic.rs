@@ -31,7 +31,7 @@ impl OnlyArgs for Args {
 fn run() -> Result<(), CliError> {
     let args: Args = onlyargs::parse()?;
 
-    // Handle `help` and `version` options.
+    // Handle `--help` and `--version` options.
     if args.help {
         args.show_help_and_exit();
     } else if args.version {
