@@ -190,12 +190,12 @@ Usage:
   full [flags] [options] [numbers...]
 
 Flags:
-  -u --username <name>  Your username.
-  -o --output [path]    Output file path.
-
-Options:
   -h --help     Show this help message.
   -V --version  Show the application version.
+
+Options:
+  -u --username <name>  Your username.
+  -o --output [path]    Output file path.
 
 Numbers:
   A list of numbers to sum.
@@ -287,12 +287,12 @@ Usage:
   full [flags] [options] [numbers...]
 
 Flags:
-  -u --username <name>  Your username.
-  -o --output [path]    Output file path.
-
-Options:
   -h --help     Show this help message.
   -V --version  Show the application version.
+
+Options:
+  -u --username <name>  Your username.
+  -o --output [path]    Output file path.
 
 Numbers:
   A list of numbers to sum.
