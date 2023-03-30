@@ -17,7 +17,7 @@ impl OnlyArgs for Args {
                 Some("--help") | Some("-h") => {
                     help = true;
                 }
-                Some("--version") => {
+                Some("--version") | Some("-V") => {
                     version = true;
                 }
                 _ => return Err(CliError::Unknown(s)),

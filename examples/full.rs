@@ -29,7 +29,7 @@ impl OnlyArgs for Args {
         "  -o --output [path]    Output file path.\n",
         "\nOptions:\n",
         "  -h --help     Show this help message.\n",
-        "  --version     Show the application version.\n",
+        "  -V --version  Show the application version.\n",
         "\nNumbers:\n",
         "  A list of numbers to sum.\n",
     );
@@ -63,7 +63,7 @@ impl OnlyArgs for Args {
                 Some("--help") | Some("-h") => {
                     help = true;
                 }
-                Some("--version") => {
+                Some("--version") | Some("-V") => {
                     version = true;
                 }
                 Some("--") => {

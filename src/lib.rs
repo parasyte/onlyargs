@@ -146,7 +146,7 @@ pub trait OnlyArgs {
 ///                 Some("--help") | Some("-h") => {
 ///                     help = true;
 ///                 }
-///                 Some("--version") => {
+///                 Some("--version") | Some("-V") => {
 ///                     version = true;
 ///                 }
 ///                 Some("--") => break,
