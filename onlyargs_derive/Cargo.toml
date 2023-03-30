@@ -1,0 +1,19 @@
+[package]
+name = "onlyargs_derive"
+description = "Obsessively tiny argument parsing derive macro"
+version = "0.1.0"
+authors = ["Jay Oster <jay@kodewerx.org>"]
+edition = "2021"
+keywords = ["cli", "arg", "argument", "parse", "parser"]
+categories = ["Command-line interface"]
+license = "MIT"
+# rust-version = "1.68"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+onlyargs = { version = "0.1", path = ".." }
+quote = "1"
+# TODO: "extra-traits" feature is used for dbg!()
+syn = { version = "2", features = ["extra-traits"] }

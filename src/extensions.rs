@@ -16,6 +16,11 @@ pub trait ArgExt {
     where
         N: Into<String>;
 
+    /// Parse an argument into an `OsString`.
+    fn parse_osstr<N>(self, name: N) -> Result<OsString, CliError>
+    where
+        N: Into<String>;
+
     /// Parse an argument into a primitive integer.
     fn parse_int<T, N>(self, name: N) -> Result<T, CliError>
     where
@@ -62,6 +67,13 @@ impl ArgExt for Option<OsString> {
             .into())
     }
 
+    fn parse_osstr<N>(self, name: N) -> Result<OsString, CliError>
+    where
+        N: Into<String>,
+    {
+        self.ok_or_else(|| CliError::MissingValue(name.into()))
+    }
+
     fn parse_int<T, N>(self, name: N) -> Result<T, CliError>
     where
         N: Into<String>,
@@ -106,6 +118,13 @@ impl ArgExt for OsString {
         N: Into<String>,
     {
         Ok(self.into())
+    }
+
+    fn parse_osstr<N>(self, _name: N) -> Result<OsString, CliError>
+    where
+        N: Into<String>,
+    {
+        Ok(self)
     }
 
     fn parse_int<T, N>(self, name: N) -> Result<T, CliError>

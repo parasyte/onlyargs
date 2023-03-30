@@ -7,6 +7,7 @@ struct Args {
     username: String,
     output: Option<PathBuf>,
     numbers: Vec<i32>,
+    verbose: bool,
 }
 
 impl OnlyArgs for Args {
@@ -25,8 +26,9 @@ impl OnlyArgs for Args {
         "\nFlags:\n",
         "  -h --help     Show this help message.\n",
         "  -V --version  Show the application version.\n",
+        "  -v --verbose  Enable verbose output.\n",
         "\nOptions:\n",
-        "  -u --username <name>  Your username.\n",
+        "  -u --username <name>  Your username. [required]\n",
         "  -o --output [path]    Output file path.\n",
         "\nNumbers:\n",
         "  A list of numbers to sum.\n",
@@ -36,6 +38,7 @@ impl OnlyArgs for Args {
         let mut username = None;
         let mut output = None;
         let mut numbers = vec![];
+        let mut verbose = false;
 
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
@@ -52,15 +55,14 @@ impl OnlyArgs for Args {
                 Some("--version") | Some("-V") => {
                     Self::version();
                 }
+                Some("--verbose") | Some("-v") => {
+                    verbose = true;
+                }
                 Some("--") => {
                     // Parse all positional arguments as i32.
-                    let nums = args.map(|arg| arg.parse_int::<i32, _>("<POSITIONAL>"));
-
-                    if let Some(err) = nums.clone().find_map(|res| res.err()) {
-                        return Err(err);
+                    for arg in args {
+                        numbers.push(arg.parse_int("<POSITIONAL>")?);
                     }
-                    numbers.extend(nums.filter_map(|res| res.ok()));
-
                     break;
                 }
                 Some(_) => {
@@ -74,6 +76,7 @@ impl OnlyArgs for Args {
             username: username.required("--username")?,
             output,
             numbers,
+            verbose,
         })
     }
 }
@@ -139,8 +142,10 @@ fn run() -> Result<(), Error> {
     }
 
     // And finally some debug info.
-    println!();
-    dbg!(args);
+    if args.verbose {
+        println!();
+        dbg!(args);
+    }
 
     Ok(())
 }

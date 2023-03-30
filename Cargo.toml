@@ -13,3 +13,9 @@ license = "MIT"
 
 [dev-dependencies]
 error-iter = "0.4"
+
+[workspace]
+members = [
+    "examples/*",
+    "onlyargs_derive",
+]

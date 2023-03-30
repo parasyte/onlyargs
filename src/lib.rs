@@ -1,10 +1,13 @@
 //! Only argument parsing! Nothing more.
 //!
-//! `onlyargs` is an obsessively tiny argument parsing library. It provides a basic trait and a
-//! helper function for parsing arguments from the environment.
+//! `onlyargs` is an obsessively tiny argument parsing library. It provides a basic trait and helper
+//! functions for parsing arguments from the environment.
 //!
 //! Implement the [`OnlyArgs`] trait on your own argument type and use any of the parser functions
-//! to create your CLI.
+//! to create your CLI. The trait can also be derived with the [`onlyargs_derive`] crate if you are
+//! OK with an opinionated parser and just want to reduce the amount of boilerplate in your code.
+//!
+//! [`onlyargs_derive`]: https://docs.rs/onlyargs_derive
 
 use std::env;
 use std::ffi::OsString;
@@ -44,7 +47,7 @@ pub enum CliError {
 ///
 /// This trait can be derived with the [`onlyargs_derive`](https://docs.rs/onlyargs_derive) crate.
 ///
-/// See [`onlyargs::parse`] for more information.
+/// See the [`parse`] function for more information.
 pub trait OnlyArgs {
     /// The application help string.
     const HELP: &'static str = concat!(
