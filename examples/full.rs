@@ -12,29 +12,27 @@ struct Args {
 }
 
 impl OnlyArgs for Args {
-    fn help() -> &'static str {
-        concat!(
-            env!("CARGO_PKG_NAME"),
-            " v",
-            env!("CARGO_PKG_VERSION"),
-            "\n",
-            env!("CARGO_PKG_DESCRIPTION"),
-            "\n\n",
-            "A basic argument parsing example with `onlyargs`.\n",
-            "Sums a list of numbers and writes the result to a file or standard output.\n",
-            "\nUsage:\n  ",
-            env!("CARGO_BIN_NAME"),
-            " [flags] [options] [numbers...]\n",
-            "\nFlags:\n",
-            "  -u --username <name>  Your username.\n",
-            "  -o --output [path]    Output file path.\n",
-            "\nOptions:\n",
-            "  -h --help     Show this help message.\n",
-            "  --version     Show the application version.\n",
-            "\nNumbers:\n",
-            "  A list of numbers to sum.\n",
-        )
-    }
+    const HELP: &'static str = concat!(
+        env!("CARGO_PKG_NAME"),
+        " v",
+        env!("CARGO_PKG_VERSION"),
+        "\n",
+        env!("CARGO_PKG_DESCRIPTION"),
+        "\n\n",
+        "A basic argument parsing example with `onlyargs`.\n",
+        "Sums a list of numbers and writes the result to a file or standard output.\n",
+        "\nUsage:\n  ",
+        env!("CARGO_BIN_NAME"),
+        " [flags] [options] [numbers...]\n",
+        "\nFlags:\n",
+        "  -u --username <name>  Your username.\n",
+        "  -o --output [path]    Output file path.\n",
+        "\nOptions:\n",
+        "  -h --help     Show this help message.\n",
+        "  --version     Show the application version.\n",
+        "\nNumbers:\n",
+        "  A list of numbers to sum.\n",
+    );
 
     fn parse(args: Vec<OsString>) -> Result<Self, CliError> {
         let mut username = None;
@@ -198,7 +196,7 @@ fn main() -> ExitCode {
         Ok(_) => ExitCode::SUCCESS,
         Err(err) => {
             if matches!(err, Error::Cli(_)) {
-                eprintln!("{}", Args::help());
+                eprintln!("{}", Args::HELP);
             }
 
             eprintln!("Error: {err}");

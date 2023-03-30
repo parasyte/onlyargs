@@ -83,6 +83,24 @@ impl std::error::Error for CliError {
 ///
 /// See [`onlyargs::parse`] for more information.
 pub trait OnlyArgs {
+    /// The application help string.
+    const HELP: &'static str = concat!(
+        env!("CARGO_PKG_NAME"),
+        " v",
+        env!("CARGO_PKG_VERSION"),
+        "\n",
+        env!("CARGO_PKG_DESCRIPTION"),
+        "\n",
+    );
+
+    /// The application name and version.
+    const VERSION: &'static str = concat!(
+        env!("CARGO_PKG_NAME"),
+        " v",
+        env!("CARGO_PKG_VERSION"),
+        "\n",
+    );
+
     /// Construct a type that implements this trait.
     ///
     /// Each argument is provided as an [`OsString`].
@@ -90,37 +108,15 @@ pub trait OnlyArgs {
     where
         Self: Sized;
 
-    /// Associated method that returns the application help string.
-    fn help() -> &'static str {
-        concat!(
-            env!("CARGO_PKG_NAME"),
-            " v",
-            env!("CARGO_PKG_VERSION"),
-            "\n",
-            env!("CARGO_PKG_DESCRIPTION"),
-            "\n",
-        )
-    }
-
     /// Print the application help string and exit the process.
     fn show_help_and_exit(&self) -> ! {
-        eprintln!("{}", Self::help());
+        eprintln!("{}", Self::HELP);
         std::process::exit(0);
-    }
-
-    /// Associated method that returns the application name and version.
-    fn version() -> &'static str {
-        concat!(
-            env!("CARGO_PKG_NAME"),
-            " v",
-            env!("CARGO_PKG_VERSION"),
-            "\n",
-        )
     }
 
     /// Print the application name and version and exit the process.
     fn show_version_and_exit(&self) -> ! {
-        eprintln!("{}", Self::version());
+        eprintln!("{}", Self::VERSION);
         std::process::exit(0);
     }
 }
@@ -165,7 +161,7 @@ pub trait OnlyArgs {
 /// let args: Args = onlyargs::parse()?;
 ///
 /// // Returns a string like "onlyargs v0.1.0"
-/// assert_eq!(Args::version(), format!("onlyargs v{}\n", env!("CARGO_PKG_VERSION")));
+/// assert_eq!(Args::VERSION, format!("onlyargs v{}\n", env!("CARGO_PKG_VERSION")));
 ///
 /// // Print the help text and exit the process when `--help` is passed to the application.
 /// if args.help {
