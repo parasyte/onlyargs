@@ -69,7 +69,7 @@ impl OnlyArgs for Args {
                     break;
                 }
                 Some(_) => {
-                    numbers.push(onlyargs::parse_int::<i32, _>("<POSITIONAL>", Some(arg))?);
+                    numbers.push(onlyargs::parse_int("<POSITIONAL>", Some(arg))?);
                 }
                 None => return Err(onlyargs::CliError::Unknown(arg)),
             }
