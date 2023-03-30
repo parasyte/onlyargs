@@ -146,8 +146,8 @@ pub trait OnlyArgs {
 ///         let mut help = false;
 ///         let mut version = false;
 ///
-///         for s in args.into_iter() {
-///             match s.to_str() {
+///         for arg in args.into_iter() {
+///             match arg.to_str() {
 ///                 Some("--help") | Some("-h") => {
 ///                     help = true;
 ///                 }
@@ -155,7 +155,7 @@ pub trait OnlyArgs {
 ///                     version = true;
 ///                 }
 ///                 Some("--") => break,
-///                 _ => return Err(CliError::Unknown(s)),
+///                 _ => return Err(CliError::Unknown(arg)),
 ///             }
 ///         }
 ///
