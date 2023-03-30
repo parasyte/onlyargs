@@ -6,7 +6,12 @@
 //! Implement the [`OnlyArgs`] trait on your own argument type or use the
 //! [`onlyargs_derive`](https://docs.rs/onlyargs_derive) crate to generate an opinionated parser.
 
-use std::{env, ffi::OsString, fmt::Display};
+use std::env;
+use std::ffi::OsString;
+use std::fmt::Display;
+use std::num::{ParseFloatError, ParseIntError};
+use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Argument parsing errors.
 #[derive(Debug)]
@@ -171,4 +176,66 @@ pub trait OnlyArgs {
 /// ```
 pub fn parse<T: OnlyArgs>() -> Result<T, CliError> {
     T::parse(env::args_os().skip(1).collect())
+}
+
+/// Parse an argument into a `String`.
+pub fn parse_str<N>(name: N, value: Option<OsString>) -> Result<String, CliError>
+where
+    N: Into<String>,
+{
+    let name = name.into();
+    value
+        .ok_or_else(|| CliError::MissingValue(name.clone()))?
+        .into_string()
+        .map_err(|err| CliError::ParseStrError(name, err))
+}
+
+/// Parse an argument into a `PathBuf`.
+pub fn parse_path<N>(name: N, value: Option<OsString>) -> Result<PathBuf, CliError>
+where
+    N: Into<String>,
+{
+    Ok(value
+        .ok_or_else(|| CliError::MissingValue(name.into()))?
+        .into())
+}
+
+/// Parse an argument into a primitive integer.
+pub fn parse_int<T, N>(name: N, value: Option<OsString>) -> Result<T, CliError>
+where
+    N: Into<String>,
+    T: FromStr<Err = ParseIntError>,
+{
+    let name = name.into();
+
+    parse_str(&name, value.clone()).and_then(|string| {
+        string
+            .parse::<T>()
+            .map_err(|err| CliError::ParseIntError(name, value.unwrap(), err))
+    })
+}
+
+/// Parse an argument into a primitive floating point number.
+pub fn parse_float<T, N>(name: N, value: Option<OsString>) -> Result<T, CliError>
+where
+    N: Into<String>,
+    T: FromStr<Err = ParseFloatError>,
+{
+    let name = name.into();
+
+    parse_str(&name, value.clone()).and_then(|string| {
+        string
+            .parse::<T>()
+            .map_err(|err| CliError::ParseFloatError(name, value.unwrap(), err))
+    })
+}
+
+pub fn unwrap_required<T, N>(skip: bool, name: N, opt: Option<T>) -> Result<T, CliError>
+where
+    N: Into<String>,
+    T: Default,
+{
+    skip.then(Default::default)
+        .or(opt)
+        .ok_or_else(|| CliError::MissingRequired(name.into()))
 }

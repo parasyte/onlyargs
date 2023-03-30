@@ -41,24 +41,14 @@ impl OnlyArgs for Args {
         let mut help = false;
         let mut version = false;
 
-        fn missing(s: OsString) -> CliError {
-            CliError::MissingValue(s.into_string().unwrap())
-        }
-
         let mut it = args.into_iter();
-        while let Some(s) = it.next() {
-            match s.to_str() {
-                Some("--username") | Some("-u") => {
-                    let name = it
-                        .next()
-                        .ok_or_else(|| missing(s))?
-                        .into_string()
-                        .map_err(|err| CliError::ParseStrError("username".to_string(), err))?;
-
-                    username = Some(name);
+        while let Some(arg) = it.next() {
+            match arg.to_str() {
+                Some(name @ "--username") | Some(name @ "-u") => {
+                    username = Some(onlyargs::parse_str(name, it.next())?);
                 }
-                Some("--output") | Some("-o") => {
-                    output = Some(it.next().ok_or_else(|| missing(s))?.into());
+                Some(name @ "--output") | Some(name @ "-o") => {
+                    output = Some(onlyargs::parse_path(name, it.next())?);
                 }
                 Some("--help") | Some("-h") => {
                     help = true;
@@ -68,44 +58,25 @@ impl OnlyArgs for Args {
                 }
                 Some("--") => {
                     // Parse all positional arguments as i32.
-                    let nums = it.map(|arg| {
-                        arg.clone()
-                            .into_string()
-                            .map_err(|_| {
-                                CliError::ParseStrError("<POSITIONAL>".to_string(), arg.clone())
-                            })
-                            .and_then(|num| {
-                                num.parse::<i32>().map_err(|err| {
-                                    CliError::ParseIntError("<POSITIONAL>".to_string(), arg, err)
-                                })
-                            })
-                    });
+                    let nums =
+                        it.map(|arg| onlyargs::parse_int::<i32, _>("<POSITIONAL>", Some(arg)));
 
                     if let Some(err) = nums.clone().find_map(|res| res.err()) {
                         return Err(err);
                     }
-                    numbers.extend(
-                        nums.into_iter()
-                            .filter_map(|res| res.ok())
-                            .collect::<Vec<_>>(),
-                    );
+                    numbers.extend(nums.filter_map(|res| res.ok()));
 
                     break;
                 }
-                Some(num) => {
-                    numbers.push(num.parse().map_err(|err| {
-                        CliError::ParseIntError("<POSITIONAL>".to_string(), s, err)
-                    })?);
+                Some(_) => {
+                    numbers.push(onlyargs::parse_int::<i32, _>("<POSITIONAL>", Some(arg))?);
                 }
-                None => return Err(onlyargs::CliError::Unknown(s)),
+                None => return Err(onlyargs::CliError::Unknown(arg)),
             }
         }
 
         // Required arguments are set to defaults if `--help` or `--version` are present.
-        let username = (help || version)
-            .then(String::new)
-            .or(username)
-            .ok_or_else(|| CliError::MissingRequired("username".to_string()))?;
+        let username = onlyargs::unwrap_required(help || version, "--username", username)?;
 
         Ok(Self {
             username,
