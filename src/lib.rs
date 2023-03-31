@@ -114,13 +114,13 @@ pub trait OnlyArgs {
         Self: Sized;
 
     /// Print the application help string and exit the process.
-    fn show_help_and_exit(&self) -> ! {
+    fn help(&self) -> ! {
         eprintln!("{}", Self::HELP);
         std::process::exit(0);
     }
 
     /// Print the application name and version and exit the process.
-    fn show_version_and_exit(&self) -> ! {
+    fn version(&self) -> ! {
         eprintln!("{}", Self::VERSION);
         std::process::exit(0);
     }
@@ -170,7 +170,7 @@ pub trait OnlyArgs {
 ///
 /// // Print the help text and exit the process when `--help` is passed to the application.
 /// if args.help {
-///     args.show_help_and_exit();
+///     args.help();
 /// }
 /// # Ok::<(), CliError>(())
 /// ```

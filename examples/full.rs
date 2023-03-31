@@ -129,9 +129,9 @@ fn run() -> Result<(), Error> {
 
     // Handle `--help` and `--version` options.
     if args.help {
-        args.show_help_and_exit();
+        args.help();
     } else if args.version {
-        args.show_version_and_exit();
+        args.version();
     }
 
     println!("Hello, {}!", args.username);
