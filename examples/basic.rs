@@ -2,43 +2,43 @@ use error_iter::ErrorIter as _;
 use onlyargs::{CliError, OnlyArgs};
 use std::{ffi::OsString, process::ExitCode};
 
+#[derive(Debug)]
 struct Args {
-    help: bool,
-    version: bool,
+    verbose: bool,
 }
 
 impl OnlyArgs for Args {
     fn parse(args: Vec<OsString>) -> Result<Self, CliError> {
-        let mut help = false;
-        let mut version = false;
+        let mut verbose = false;
 
-        for s in args.into_iter() {
-            match s.to_str() {
+        for arg in args.into_iter() {
+            match arg.to_str() {
                 Some("--help") | Some("-h") => {
-                    help = true;
+                    Self::help();
                 }
                 Some("--version") | Some("-V") => {
-                    version = true;
+                    Self::version();
                 }
-                _ => return Err(CliError::Unknown(s)),
+                Some("--verbose") | Some("-v") => {
+                    verbose = true;
+                }
+                Some("--") => break,
+                _ => return Err(CliError::Unknown(arg)),
             }
         }
 
-        Ok(Self { help, version })
+        Ok(Self { verbose })
     }
 }
 
 fn run() -> Result<(), CliError> {
     let args: Args = onlyargs::parse()?;
 
-    // Handle `--help` and `--version` options.
-    if args.help {
-        args.help();
-    } else if args.version {
-        args.version();
-    }
-
     println!("Arguments parsed successfully!");
+
+    if args.verbose {
+        println!("Verbose output is enabled");
+    }
 
     Ok(())
 }

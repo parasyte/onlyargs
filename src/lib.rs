@@ -3,15 +3,14 @@
 //! `onlyargs` is an obsessively tiny argument parsing library. It provides a basic trait and a
 //! helper function for parsing arguments from the environment.
 //!
-//! Implement the [`OnlyArgs`] trait on your own argument type or use the
-//! [`onlyargs_derive`](https://docs.rs/onlyargs_derive) crate to generate an opinionated parser.
+//! Implement the [`OnlyArgs`] trait on your own argument type and use any of the parser functions
+//! to create your CLI.
 
 use std::env;
 use std::ffi::OsString;
 use std::fmt::Display;
-use std::num::{ParseFloatError, ParseIntError};
-use std::path::PathBuf;
-use std::str::FromStr;
+
+pub mod extensions;
 
 /// Argument parsing errors.
 #[derive(Debug)]
@@ -41,6 +40,49 @@ pub enum CliError {
     Unknown(OsString),
 }
 
+/// The primary argument parser trait.
+///
+/// This trait can be derived with the [`onlyargs_derive`](https://docs.rs/onlyargs_derive) crate.
+///
+/// See [`onlyargs::parse`] for more information.
+pub trait OnlyArgs {
+    /// The application help string.
+    const HELP: &'static str = concat!(
+        env!("CARGO_PKG_NAME"),
+        " v",
+        env!("CARGO_PKG_VERSION"),
+        "\n",
+        env!("CARGO_PKG_DESCRIPTION"),
+        "\n",
+    );
+
+    /// The application name and version.
+    const VERSION: &'static str = concat!(
+        env!("CARGO_PKG_NAME"),
+        " v",
+        env!("CARGO_PKG_VERSION"),
+        "\n",
+    );
+
+    /// Construct a type that implements this trait.
+    ///
+    /// Each argument is provided as an [`OsString`].
+    fn parse(args: Vec<OsString>) -> Result<Self, CliError>
+    where
+        Self: Sized;
+
+    /// Print the application help string and exit the process.
+    fn help() -> ! {
+        eprintln!("{}", Self::HELP);
+        std::process::exit(0);
+    }
+
+    /// Print the application name and version and exit the process.
+    fn version() -> ! {
+        eprintln!("{}", Self::VERSION);
+        std::process::exit(0);
+    }
+}
 impl Display for CliError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -82,50 +124,6 @@ impl std::error::Error for CliError {
     }
 }
 
-/// The primary argument parser trait.
-///
-/// This trait can be derived with the [`onlyargs_derive`](https://docs.rs/onlyargs_derive) crate.
-///
-/// See [`onlyargs::parse`] for more information.
-pub trait OnlyArgs {
-    /// The application help string.
-    const HELP: &'static str = concat!(
-        env!("CARGO_PKG_NAME"),
-        " v",
-        env!("CARGO_PKG_VERSION"),
-        "\n",
-        env!("CARGO_PKG_DESCRIPTION"),
-        "\n",
-    );
-
-    /// The application name and version.
-    const VERSION: &'static str = concat!(
-        env!("CARGO_PKG_NAME"),
-        " v",
-        env!("CARGO_PKG_VERSION"),
-        "\n",
-    );
-
-    /// Construct a type that implements this trait.
-    ///
-    /// Each argument is provided as an [`OsString`].
-    fn parse(args: Vec<OsString>) -> Result<Self, CliError>
-    where
-        Self: Sized;
-
-    /// Print the application help string and exit the process.
-    fn help(&self) -> ! {
-        eprintln!("{}", Self::HELP);
-        std::process::exit(0);
-    }
-
-    /// Print the application name and version and exit the process.
-    fn version(&self) -> ! {
-        eprintln!("{}", Self::VERSION);
-        std::process::exit(0);
-    }
-}
-
 /// Type constructor for argument parser.
 ///
 /// Given a type that implements [`OnlyArgs`], this function will construct the type from the
@@ -137,29 +135,30 @@ pub trait OnlyArgs {
 /// # use std::ffi::OsString;
 /// # use onlyargs::{CliError, OnlyArgs};
 /// struct Args {
-///     help: bool,
-///     version: bool,
+///     verbose: bool,
 /// }
 ///
 /// impl OnlyArgs for Args {
 ///     fn parse(args: Vec<OsString>) -> Result<Self, CliError> {
-///         let mut help = false;
-///         let mut version = false;
+///         let mut verbose = false;
 ///
 ///         for arg in args.into_iter() {
 ///             match arg.to_str() {
 ///                 Some("--help") | Some("-h") => {
-///                     help = true;
+///                     Self::help();
 ///                 }
 ///                 Some("--version") | Some("-V") => {
-///                     version = true;
+///                     Self::version();
+///                 }
+///                 Some("--verbose") | Some("-v") => {
+///                     verbose = true;
 ///                 }
 ///                 Some("--") => break,
 ///                 _ => return Err(CliError::Unknown(arg)),
 ///             }
 ///         }
 ///
-///         Ok(Self { help, version })
+///         Ok(Self { verbose })
 ///     }
 /// }
 ///
@@ -168,74 +167,11 @@ pub trait OnlyArgs {
 /// // Returns a string like "onlyargs v0.1.0"
 /// assert_eq!(Args::VERSION, format!("onlyargs v{}\n", env!("CARGO_PKG_VERSION")));
 ///
-/// // Print the help text and exit the process when `--help` is passed to the application.
-/// if args.help {
-///     args.help();
+/// if args.verbose {
+///     println!("Verbose output is enabled");
 /// }
 /// # Ok::<(), CliError>(())
 /// ```
 pub fn parse<T: OnlyArgs>() -> Result<T, CliError> {
     T::parse(env::args_os().skip(1).collect())
-}
-
-/// Parse an argument into a `String`.
-pub fn parse_str<N>(name: N, value: Option<OsString>) -> Result<String, CliError>
-where
-    N: Into<String>,
-{
-    let name = name.into();
-    value
-        .ok_or_else(|| CliError::MissingValue(name.clone()))?
-        .into_string()
-        .map_err(|err| CliError::ParseStrError(name, err))
-}
-
-/// Parse an argument into a `PathBuf`.
-pub fn parse_path<N>(name: N, value: Option<OsString>) -> Result<PathBuf, CliError>
-where
-    N: Into<String>,
-{
-    Ok(value
-        .ok_or_else(|| CliError::MissingValue(name.into()))?
-        .into())
-}
-
-/// Parse an argument into a primitive integer.
-pub fn parse_int<T, N>(name: N, value: Option<OsString>) -> Result<T, CliError>
-where
-    N: Into<String>,
-    T: FromStr<Err = ParseIntError>,
-{
-    let name = name.into();
-
-    parse_str(&name, value.clone()).and_then(|string| {
-        string
-            .parse::<T>()
-            .map_err(|err| CliError::ParseIntError(name, value.unwrap(), err))
-    })
-}
-
-/// Parse an argument into a primitive floating point number.
-pub fn parse_float<T, N>(name: N, value: Option<OsString>) -> Result<T, CliError>
-where
-    N: Into<String>,
-    T: FromStr<Err = ParseFloatError>,
-{
-    let name = name.into();
-
-    parse_str(&name, value.clone()).and_then(|string| {
-        string
-            .parse::<T>()
-            .map_err(|err| CliError::ParseFloatError(name, value.unwrap(), err))
-    })
-}
-
-pub fn unwrap_required<T, N>(skip: bool, name: N, opt: Option<T>) -> Result<T, CliError>
-where
-    N: Into<String>,
-    T: Default,
-{
-    skip.then(Default::default)
-        .or(opt)
-        .ok_or_else(|| CliError::MissingRequired(name.into()))
 }
