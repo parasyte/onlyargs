@@ -6,7 +6,8 @@
 //! Only structs with named fields are supported. Doc comments are used for the generated help text.
 //! Argument names are generated automatically from field names with only a few rules:
 //!
-//! - Long argument names start with `--`, and ASCII characters are made lowercase.
+//! - Long argument names start with `--`, ASCII alphabetic characters are made lowercase, and all
+//!   `_` characters are replaced with `-`.
 //! - Short argument names use the first ASCII alphabetic character of the field name following a
 //!   `-`. Short arguments are not allowed to be duplicated.
 //!   - This behavior can be suppressed with the `#[long]` attribute (see below). This attribute
@@ -303,7 +304,7 @@ const SHORT_PAD: usize = 3;
 const LONG_PAD: usize = 6;
 
 fn to_arg_name(ident: &Ident) -> String {
-    let mut name = ident.to_string();
+    let mut name = ident.to_string().replace('_', "-");
     name.make_ascii_lowercase();
 
     name
