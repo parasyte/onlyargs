@@ -13,12 +13,8 @@ impl OnlyArgs for Args {
 
         for arg in args.into_iter() {
             match arg.to_str() {
-                Some("--help") | Some("-h") => {
-                    Self::help();
-                }
-                Some("--version") | Some("-V") => {
-                    Self::version();
-                }
+                Some("--help") | Some("-h") => Self::help(),
+                Some("--version") | Some("-V") => Self::version(),
                 Some("--verbose") | Some("-v") => {
                     verbose = true;
                 }
