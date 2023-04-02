@@ -292,6 +292,7 @@ impl Parse for ArgOption {
             || optional_os_strings.contains(&ty)
             || optional_numbers.contains(&ty)
             || ty == parse_quote!(Option<String>)
+            || positional_paths.contains(&ty)
             || positional_os_strings.contains(&ty)
             || positional_numbers.contains(&ty)
             || ty == parse_quote!(Vec<String>)
