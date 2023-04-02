@@ -1,3 +1,4 @@
+use quote::ToTokens;
 use syn::parse::{discouraged::Speculative as _, Parse, ParseStream};
 use syn::{braced, parse_quote, Attribute, Expr, ExprLit, Ident, Lit, Path, Token, Visibility};
 
@@ -30,6 +31,7 @@ pub(crate) struct ArgOption {
     pub(crate) short: Option<char>,
     pub(crate) ty_help: ArgType,
     pub(crate) doc: Vec<String>,
+    pub(crate) default: Option<Lit>,
     pub(crate) optional: bool,
     pub(crate) positional: bool,
 }
@@ -84,7 +86,7 @@ impl Parse for ArgumentStruct {
             }
         }
 
-        let doc = get_doc_comment(&attrs).unwrap_or_default();
+        let doc = get_doc_comment(&attrs);
 
         Ok(Self {
             name,
@@ -99,16 +101,65 @@ impl Parse for ArgumentStruct {
 impl Parse for Argument {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let attrs = Attribute::parse_outer(input)?;
+
+        // Parse attributes
+        let mut default = None;
+        let mut long = false;
+        let mut short = None;
+        for attr in &attrs {
+            if attr.path().is_ident("default") {
+                default = Some(attr.parse_args()?);
+            } else if attr.path().is_ident("long") {
+                long = true;
+            } else if attr.path().is_ident("short") {
+                let ch: Lit = attr.parse_args()?;
+                if let Lit::Char(ch) = ch {
+                    short = Some(ch.value());
+                }
+            }
+        }
+
         input.parse::<Visibility>()?;
 
         let fork = input.fork();
         if let Ok(mut flag) = fork.parse::<ArgFlag>() {
             input.advance_to(&fork);
-            flag.doc = get_doc_comment(&attrs).unwrap_or_default();
+
+            // Patch flag with attributes
+            flag.doc = get_doc_comment(&attrs);
+
+            if long {
+                flag.short = None;
+            } else if short.is_some() {
+                flag.short = short;
+            }
 
             Ok(Self::Flag(flag))
         } else if let Ok(mut opt) = input.parse::<ArgOption>() {
-            opt.doc = get_doc_comment(&attrs).unwrap_or_default();
+            opt.doc = get_doc_comment(&attrs);
+
+            opt.default = default;
+            if let Some(default) = opt.default.as_ref() {
+                opt.optional = false;
+                let default = default.to_token_stream().to_string();
+                if let Some(line) = opt.doc.last_mut() {
+                    line.push_str(&format!(" [default: {}]", default));
+                } else {
+                    opt.doc.push(format!("[default: {}]", default));
+                }
+            } else if !opt.optional {
+                if let Some(line) = opt.doc.last_mut() {
+                    line.push_str(" [required]");
+                } else {
+                    opt.doc.push("[required]".to_string());
+                }
+            }
+
+            if long {
+                opt.short = None;
+            } else if short.is_some() {
+                opt.short = short;
+            }
 
             Ok(Self::Option(opt))
         } else {
@@ -241,16 +292,15 @@ impl Parse for ArgOption {
             || optional_os_strings.contains(&ty)
             || optional_numbers.contains(&ty)
             || ty == parse_quote!(Option<String>)
+            || positional_os_strings.contains(&ty)
+            || positional_numbers.contains(&ty)
+            || ty == parse_quote!(Vec<String>)
         {
             true
         } else if required_paths.contains(&ty)
             || required_os_strings.contains(&ty)
             || required_numbers.contains(&ty)
             || ty == parse_quote!(String)
-            || positional_paths.contains(&ty)
-            || positional_os_strings.contains(&ty)
-            || positional_numbers.contains(&ty)
-            || ty == parse_quote!(Vec<String>)
         {
             false
         } else {
@@ -294,6 +344,7 @@ impl Parse for ArgOption {
             short,
             ty_help,
             doc: vec![],
+            default: None,
             optional,
             positional,
         })
@@ -333,8 +384,8 @@ impl ArgType {
     }
 }
 
-fn get_doc_comment(attrs: &[Attribute]) -> Option<Vec<String>> {
-    let doc = attrs
+fn get_doc_comment(attrs: &[Attribute]) -> Vec<String> {
+    attrs
         .iter()
         .filter_map(|attr| {
             if attr.path().is_ident("doc") {
@@ -352,11 +403,5 @@ fn get_doc_comment(attrs: &[Attribute]) -> Option<Vec<String>> {
                 None
             }
         })
-        .collect::<Vec<_>>();
-
-    if !doc.is_empty() {
-        Some(doc)
-    } else {
-        None
-    }
+        .collect()
 }

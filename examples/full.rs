@@ -7,6 +7,7 @@ struct Args {
     username: String,
     output: Option<PathBuf>,
     numbers: Vec<i32>,
+    width: i32,
     verbose: bool,
 }
 
@@ -28,8 +29,9 @@ impl OnlyArgs for Args {
         "  -V --version  Show the application version.\n",
         "  -v --verbose  Enable verbose output.\n",
         "\nOptions:\n",
-        "  -u --username <name>  Your username. [required]\n",
-        "  -o --output [path]    Output file path.\n",
+        "  -u --username STRING  Your username. [required]\n",
+        "  -o --output PATH      Output file path.\n",
+        "  -w --width NUMBER     Set the width. [default: 42]\n",
         "\nNumbers:\n",
         "  A list of numbers to sum.\n",
     );
@@ -38,22 +40,22 @@ impl OnlyArgs for Args {
         let mut username = None;
         let mut output = None;
         let mut numbers = vec![];
+        let mut width = 42;
         let mut verbose = false;
 
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
             match arg.to_str() {
+                Some("--help") | Some("-h") => Self::help(),
+                Some("--version") | Some("-V") => Self::version(),
                 Some(name @ "--username") | Some(name @ "-u") => {
                     username = Some(args.next().parse_str(name)?);
                 }
                 Some(name @ "--output") | Some(name @ "-o") => {
                     output = Some(args.next().parse_path(name)?);
                 }
-                Some("--help") | Some("-h") => {
-                    Self::help();
-                }
-                Some("--version") | Some("-V") => {
-                    Self::version();
+                Some(name @ "--width") | Some(name @ "-w") => {
+                    width = args.next().parse_int(name)?;
                 }
                 Some("--verbose") | Some("-v") => {
                     verbose = true;
@@ -76,6 +78,7 @@ impl OnlyArgs for Args {
             username: username.required("--username")?,
             output,
             numbers,
+            width,
             verbose,
         })
     }
@@ -121,6 +124,7 @@ fn run() -> Result<(), Error> {
     let args: Args = onlyargs::parse()?;
 
     println!("Hello, {}!", args.username);
+    println!("The width is {}.", args.width);
 
     // Do some work.
     let numbers = &args

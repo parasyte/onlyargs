@@ -12,7 +12,7 @@ use thiserror::Error;
 /// Sums a list of numbers and writes the result to a file or standard output.
 #[derive(Clone, Debug, Eq, PartialEq, OnlyArgs)]
 struct Args {
-    /// Your username. [required]
+    /// Your username.
     username: String,
 
     /// Output file path.
@@ -20,6 +20,10 @@ struct Args {
 
     /// A list of numbers to sum.
     numbers: Vec<i32>,
+
+    /// Set the width.
+    #[default(42)]
+    width: i32,
 
     /// Enable verbose output.
     verbose: bool,
@@ -38,6 +42,7 @@ fn run() -> Result<(), Error> {
     let args: Args = onlyargs::parse()?;
 
     println!("Hello, {}!", args.username);
+    println!("The width is {}.", args.width);
 
     // Do some work.
     let numbers = &args
