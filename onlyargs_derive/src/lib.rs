@@ -284,54 +284,54 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
     // Produce final code.
     let code = TokenStream::from_str(&format!(
         r#"
-        impl ::onlyargs::OnlyArgs for {name} {{
-            const HELP: &'static str = concat!(
-                env!("CARGO_PKG_NAME"),
-                " v",
-                env!("CARGO_PKG_VERSION"),
-                "\n",
-                env!("CARGO_PKG_DESCRIPTION"),
-                "\n",
-                {doc_comment:?},
-                "\nUsage:\n  ",
-                env!("CARGO_BIN_NAME"),
-                " [flags] [options]",
-                {positional_header:?},
-                "\n\nFlags:\n",
-                {flags_help:?},
-                "\nOptions:\n",
-                {options_help:?},
-                {positional_help:?},
-                "\n",
-            );
+            impl ::onlyargs::OnlyArgs for {name} {{
+                const HELP: &'static str = concat!(
+                    env!("CARGO_PKG_NAME"),
+                    " v",
+                    env!("CARGO_PKG_VERSION"),
+                    "\n",
+                    env!("CARGO_PKG_DESCRIPTION"),
+                    "\n",
+                    {doc_comment:?},
+                    "\nUsage:\n  ",
+                    env!("CARGO_BIN_NAME"),
+                    " [flags] [options]",
+                    {positional_header:?},
+                    "\n\nFlags:\n",
+                    {flags_help:?},
+                    "\nOptions:\n",
+                    {options_help:?},
+                    {positional_help:?},
+                    "\n",
+                );
 
-            fn parse(args: Vec<std::ffi::OsString>) -> Result<Self, ::onlyargs::CliError> {{
-                use ::onlyargs::extensions::*;
+                fn parse(args: Vec<std::ffi::OsString>) -> Result<Self, ::onlyargs::CliError> {{
+                    use ::onlyargs::extensions::*;
 
-                {flags_vars}
-                {options_vars}
-                {positional_var}
+                    {flags_vars}
+                    {options_vars}
+                    {positional_var}
 
-                let mut args = args.into_iter();
-                while let Some(arg) = args.next() {{
-                    match arg.to_str() {{
-                        // TODO: Add an attribute to disable help/version.
-                        Some("--help") | Some("-h") => Self::help(),
-                        Some("--version") | Some("-V") => Self::version(),
-                        {flags_matchers}
-                        {options_matchers}
-                        {positional_matcher}
+                    let mut args = args.into_iter();
+                    while let Some(arg) = args.next() {{
+                        match arg.to_str() {{
+                            // TODO: Add an attribute to disable help/version.
+                            Some("--help") | Some("-h") => Self::help(),
+                            Some("--version") | Some("-V") => Self::version(),
+                            {flags_matchers}
+                            {options_matchers}
+                            {positional_matcher}
+                        }}
                     }}
-                }}
 
-                Ok(Self {{
-                    {flags_idents}
-                    {options_idents}
-                    {positional_ident}
-                }})
+                    Ok(Self {{
+                        {flags_idents}
+                        {options_idents}
+                        {positional_ident}
+                    }})
+                }}
             }}
-        }}
-    "#
+        "#
     ));
 
     match code {
