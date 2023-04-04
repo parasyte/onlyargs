@@ -41,13 +41,12 @@ pub(crate) struct ArgOption {
 pub(crate) struct ArgView<'a> {
     pub(crate) name: &'a Ident,
     pub(crate) short: Option<char>,
-    pub(crate) ty_help: ArgType,
+    pub(crate) ty_help: Option<ArgType>,
     pub(crate) doc: &'a [String],
 }
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum ArgType {
-    Bool,
     Number,
     OsString,
     Path,
@@ -233,7 +232,7 @@ impl ArgFlag {
         ArgView {
             name: &self.name,
             short: self.short,
-            ty_help: ArgType::Bool,
+            ty_help: None,
             doc: &self.doc,
         }
     }
@@ -390,7 +389,7 @@ impl ArgOption {
         ArgView {
             name: &self.name,
             short: self.short,
-            ty_help: self.ty_help,
+            ty_help: Some(self.ty_help),
             doc: &self.doc,
         }
     }
@@ -399,7 +398,6 @@ impl ArgOption {
 impl ArgType {
     pub(crate) fn as_str(&self) -> &str {
         match self {
-            Self::Bool => "",
             Self::Number => " NUMBER",
             Self::OsString | Self::String => " STRING",
             Self::Path => " PATH",

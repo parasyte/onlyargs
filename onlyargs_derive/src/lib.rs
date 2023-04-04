@@ -205,7 +205,6 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
             let arg = format!("--{}", to_arg_name(name));
             let value = if opt.default.is_some() {
                 match opt.ty_help {
-                    ArgType::Bool => unreachable!(),
                     ArgType::Number => "args.next().parse_int(name)?",
                     ArgType::OsString => "args.next().parse_osstr(name)?",
                     ArgType::Path => "args.next().parse_path(name)?",
@@ -213,7 +212,6 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                 }
             } else {
                 match opt.ty_help {
-                    ArgType::Bool => unreachable!(),
                     ArgType::Number => "Some(args.next().parse_int(name)?)",
                     ArgType::OsString => "Some(args.next().parse_osstr(name)?)",
                     ArgType::Path => "Some(args.next().parse_path(name)?)",
@@ -228,7 +226,6 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         Some(opt) => {
             let name = &opt.name;
             let value = match opt.ty_help {
-                ArgType::Bool => unreachable!(),
                 ArgType::Number => r#"arg.parse_int("<POSITIONAL>")?"#,
                 ArgType::OsString => r#"arg.parse_osstr("<POSITIONAL>")?"#,
                 ArgType::Path => r#"arg.parse_path("<POSITIONAL>")?"#,
@@ -352,13 +349,16 @@ fn to_arg_name(ident: &Ident) -> String {
     name
 }
 
-fn to_help(arg: ArgView, max_width: usize) -> String {
-    let name = to_arg_name(arg.name);
-    let ty = arg.ty_help.as_str();
+fn to_help(view: ArgView, max_width: usize) -> String {
+    let name = to_arg_name(view.name);
+    let ty = match view.ty_help.as_ref() {
+        Some(ty_help) => ty_help.as_str(),
+        None => "",
+    };
     let pad = " ".repeat(max_width + LONG_PAD);
-    let help = arg.doc.join(&format!("\n{pad}"));
+    let help = view.doc.join(&format!("\n{pad}"));
 
-    if let Some(ch) = arg.short {
+    if let Some(ch) = view.short {
         let width = max_width - SHORT_PAD - name.len();
 
         format!("  -{ch} --{name}{ty:<width$}  {help}\n")
@@ -373,8 +373,12 @@ where
 {
     iter.fold(0, |acc, view| {
         let short = view.short.map(|_| SHORT_PAD).unwrap_or_default();
+        let ty = match view.ty_help.as_ref() {
+            Some(ty_help) => ty_help.as_str(),
+            None => "",
+        };
 
-        acc.max(view.name.to_string().len() + view.ty_help.as_str().len() + short)
+        acc.max(view.name.to_string().len() + ty.len() + short)
     })
 }
 
