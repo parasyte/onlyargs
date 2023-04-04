@@ -244,8 +244,8 @@ impl ArgOption {
         let name = parse_ident(input)?;
         expect_punct(input, ':')?;
 
-        // TODO: Parse supported paths
         let path = parse_path(input)?;
+        let path = path.as_str();
 
         // We have to check multiple possible paths for types that are not included in
         // `std::prelude`. The type system is not available here, so we need to make some educated
@@ -323,19 +323,19 @@ impl ArgOption {
             "Option<usize>",
         ];
 
-        let optional = if optional_paths.contains(&path.as_str())
-            || optional_os_strings.contains(&path.as_str())
-            || optional_numbers.contains(&path.as_str())
+        let optional = if optional_paths.contains(&path)
+            || optional_os_strings.contains(&path)
+            || optional_numbers.contains(&path)
             || path == "Option<String>"
-            || positional_paths.contains(&path.as_str())
-            || positional_os_strings.contains(&path.as_str())
-            || positional_numbers.contains(&path.as_str())
+            || positional_paths.contains(&path)
+            || positional_os_strings.contains(&path)
+            || positional_numbers.contains(&path)
             || path == "Vec<String>"
         {
             true
-        } else if required_paths.contains(&path.as_str())
-            || required_os_strings.contains(&path.as_str())
-            || required_numbers.contains(&path.as_str())
+        } else if required_paths.contains(&path)
+            || required_os_strings.contains(&path)
+            || required_numbers.contains(&path)
             || path == "String"
         {
             false
@@ -346,30 +346,30 @@ impl ArgOption {
             ));
         };
 
-        let ty_help = if optional_paths.contains(&path.as_str())
-            || required_paths.contains(&path.as_str())
-            || positional_paths.contains(&path.as_str())
+        let ty_help = if optional_paths.contains(&path)
+            || required_paths.contains(&path)
+            || positional_paths.contains(&path)
         {
             ArgType::Path
-        } else if optional_os_strings.contains(&path.as_str())
-            || required_os_strings.contains(&path.as_str())
-            || positional_os_strings.contains(&path.as_str())
+        } else if optional_os_strings.contains(&path)
+            || required_os_strings.contains(&path)
+            || positional_os_strings.contains(&path)
         {
             ArgType::OsString
         } else if path == "String" || path == "Vec<String>" || path == "Option<String>" {
             ArgType::String
-        } else if optional_numbers.contains(&path.as_str())
-            || required_numbers.contains(&path.as_str())
-            || positional_numbers.contains(&path.as_str())
+        } else if optional_numbers.contains(&path)
+            || required_numbers.contains(&path)
+            || positional_numbers.contains(&path)
         {
             ArgType::Number
         } else {
             unreachable!();
         };
 
-        let positional = positional_paths.contains(&path.as_str())
-            || positional_os_strings.contains(&path.as_str())
-            || positional_numbers.contains(&path.as_str())
+        let positional = positional_paths.contains(&path)
+            || positional_os_strings.contains(&path)
+            || positional_numbers.contains(&path)
             || path == "Vec<String>";
 
         // TODO: Add an attribute to disable short names
