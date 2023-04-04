@@ -67,9 +67,12 @@
 //! becomes the "dumping ground" for all positional arguments, which are any args that do not match
 //! an existing field, or any arguments following the `--` "stop parsing" sentinel.
 
+#![forbid(unsafe_code)]
+#![deny(clippy::all)]
+
 use crate::parser::*;
 use proc_macro::{Ident, Span, TokenStream};
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, str::FromStr as _};
 
 mod parser;
 
@@ -330,7 +333,7 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
 
     match code {
         Ok(stream) => stream,
-        Err(err) => spanned_error(&err.to_string(), Span::call_site()),
+        Err(err) => spanned_error(err.to_string(), Span::call_site()),
     }
 }
 
@@ -378,7 +381,7 @@ fn dedupe<'a>(dupes: &mut HashMap<char, &'a Ident>, arg: ArgView<'a>) -> Result<
             let msg =
                 format!("Only one short arg is allowed. `-{ch}` also used on field `{other}`");
 
-            return Err(spanned_error(&msg, arg.name.span()));
+            return Err(spanned_error(msg, arg.name.span()));
         }
 
         dupes.insert(ch, arg.name);

@@ -416,13 +416,13 @@ impl Fork {
     }
 }
 
-pub(crate) fn spanned_error(msg: &str, span: Span) -> TokenStream {
+pub(crate) fn spanned_error<S: AsRef<str>>(msg: S, span: Span) -> TokenStream {
     TokenStream::from_iter([
         TokenTree::Ident(Ident::new("compile_error", span)),
         TokenTree::Punct(Punct::new('!', Spacing::Alone)),
         TokenTree::Group(Group::new(
             Delimiter::Parenthesis,
-            TokenTree::from(Literal::string(msg)).into(),
+            TokenTree::from(Literal::string(msg.as_ref())).into(),
         )),
         TokenTree::Punct(Punct::new(';', Spacing::Alone)),
     ])
@@ -517,7 +517,7 @@ fn expect_ident(input: &mut IntoIter, expect: &str) -> Result<(), TokenStream> {
         if ident.to_string() == expect {
             Ok(())
         } else {
-            Err(spanned_error(&format!("Expected `{expect}`"), ident.span()))
+            Err(spanned_error(format!("Expected `{expect}`"), ident.span()))
         }
     })
 }
@@ -527,7 +527,7 @@ fn expect_punct(input: &mut IntoIter, expect: char) -> Result<(), TokenStream> {
         if punct.as_char() == expect {
             Ok(())
         } else {
-            Err(spanned_error(&format!("Expected `{expect}`"), punct.span()))
+            Err(spanned_error(format!("Expected `{expect}`"), punct.span()))
         }
     })
 }
@@ -542,8 +542,7 @@ fn parse_group(input: &mut IntoIter, delim: Delimiter) -> Result<TokenStream, To
                 Delimiter::None => "delimiter",
                 Delimiter::Parenthesis => "(",
             };
-            let msg = format!("Expected {delim}");
-            return Err(spanned_error(&msg, parse_span(tree)));
+            return Err(spanned_error(format!("Expected {delim}"), parse_span(tree)));
         }
     })
 }
