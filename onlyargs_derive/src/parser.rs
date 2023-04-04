@@ -87,7 +87,7 @@ impl ArgumentStruct {
                     (true, Some(_)) => {
                         return Err(spanned_error(
                             "Positional arguments can only be specified once.",
-                            Span::call_site(),
+                            opt.name.span(),
                         ));
                     }
                     _ => options.push(opt),
@@ -165,38 +165,38 @@ impl Argument {
                 }
 
                 args.push(Self::Flag(flag))
-            } else if let Ok(mut opt) = ArgOption::parse(&mut input) {
-                opt.doc = get_doc_comment(&attrs);
-
-                opt.default = default;
-                if let Some(default) = opt.default.as_ref() {
-                    opt.optional = false;
-                    let default = default.to_string();
-                    if let Some(line) = opt.doc.last_mut() {
-                        line.push_str(&format!(" [default: {default}]"));
-                    } else {
-                        opt.doc.push(format!("[default: {default}]"));
-                    }
-                } else if !opt.optional {
-                    if let Some(line) = opt.doc.last_mut() {
-                        line.push_str(" [required]");
-                    } else {
-                        opt.doc.push("[required]".to_string());
-                    }
-                }
-
-                if long {
-                    opt.short = None;
-                } else if short.is_some() {
-                    opt.short = short;
-                }
-
-                args.push(Self::Option(opt));
             } else {
-                return Err(spanned_error(
-                    "Expected a type suitable for CLI arguments",
-                    Span::call_site(),
-                ));
+                match ArgOption::parse(&mut input) {
+                    Ok(mut opt) => {
+                        opt.doc = get_doc_comment(&attrs);
+
+                        opt.default = default;
+                        if let Some(default) = opt.default.as_ref() {
+                            opt.optional = false;
+                            let default = default.to_string();
+                            if let Some(line) = opt.doc.last_mut() {
+                                line.push_str(&format!(" [default: {default}]"));
+                            } else {
+                                opt.doc.push(format!("[default: {default}]"));
+                            }
+                        } else if !opt.optional {
+                            if let Some(line) = opt.doc.last_mut() {
+                                line.push_str(" [required]");
+                            } else {
+                                opt.doc.push("[required]".to_string());
+                            }
+                        }
+
+                        if long {
+                            opt.short = None;
+                        } else if short.is_some() {
+                            opt.short = short;
+                        }
+
+                        args.push(Self::Option(opt));
+                    }
+                    Err(err) => return Err(err),
+                }
             }
         }
 
@@ -244,7 +244,7 @@ impl ArgOption {
         let name = parse_ident(input)?;
         expect_punct(input, ':')?;
 
-        let path = parse_path(input)?;
+        let (path, span) = parse_path(input)?;
         let path = path.as_str();
 
         // We have to check multiple possible paths for types that are not included in
@@ -342,7 +342,7 @@ impl ArgOption {
         } else {
             return Err(spanned_error(
                 "Expected bool, PathBuf, String, OsString, integer or float",
-                Span::call_site(),
+                span,
             ));
         };
 
@@ -417,13 +417,16 @@ impl Fork {
 }
 
 pub(crate) fn spanned_error<S: AsRef<str>>(msg: S, span: Span) -> TokenStream {
+    let mut group = Group::new(
+        Delimiter::Parenthesis,
+        TokenTree::from(Literal::string(msg.as_ref())).into(),
+    );
+    group.set_span(span);
+
     TokenStream::from_iter([
         TokenTree::Ident(Ident::new("compile_error", span)),
         TokenTree::Punct(Punct::new('!', Spacing::Alone)),
-        TokenTree::Group(Group::new(
-            Delimiter::Parenthesis,
-            TokenTree::from(Literal::string(msg.as_ref())).into(),
-        )),
+        TokenTree::Group(group),
         TokenTree::Punct(Punct::new(';', Spacing::Alone)),
     ])
 }
@@ -497,19 +500,28 @@ fn parse_visibility(input: &mut IntoIter) -> Result<(), TokenStream> {
     Ok(())
 }
 
-fn parse_path(input: &mut IntoIter) -> Result<String, TokenStream> {
+fn parse_path(input: &mut IntoIter) -> Result<(String, Span), TokenStream> {
     let mut path = String::new();
+    let mut span = None;
 
     for tree in input.by_ref() {
         match tree {
             TokenTree::Punct(punct) if punct.as_char() == ',' => break,
-            TokenTree::Punct(punct) => path.push(punct.as_char()),
-            TokenTree::Ident(ident) => path.push_str(&ident.to_string()),
+            TokenTree::Punct(punct) => {
+                span.get_or_insert_with(|| punct.span());
+                path.push(punct.as_char());
+            }
+            TokenTree::Ident(ident) => {
+                span.get_or_insert_with(|| ident.span());
+                path.push_str(&ident.to_string());
+            }
             tree => return Err(spanned_error("Unexpected token", parse_span(Some(tree)))),
         }
     }
 
-    Ok(path)
+    let span = span.ok_or_else(|| spanned_error("Unexpected end of stream", Span::call_site()))?;
+
+    Ok((path, span))
 }
 
 fn expect_ident(input: &mut IntoIter, expect: &str) -> Result<(), TokenStream> {
