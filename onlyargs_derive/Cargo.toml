@@ -5,7 +5,7 @@ version = "0.1.0"
 authors = ["Jay Oster <jay@kodewerx.org>"]
 edition = "2021"
 keywords = ["cli", "arg", "argument", "parse", "parser"]
-categories = ["Command-line interface"]
+categories = ["command-line-interface"]
 license = "MIT"
 
 [lib]
