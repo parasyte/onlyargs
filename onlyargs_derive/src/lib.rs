@@ -243,11 +243,15 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                         }}
                         break;
                     }}
-                    Some(_) => {name}.push({value}),
+                    _ => {name}.push({value}),
                 "#
             )
         }
-        None => r#"Some("--") => break,"#.to_string(),
+        None => r#"
+            Some("--") => break,
+            _ => return Err(::onlyargs::CliError::Unknown(arg)),
+        "#
+        .to_string(),
     };
 
     // Produce identifiers for args constructor.
@@ -317,7 +321,6 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                         {flags_matchers}
                         {options_matchers}
                         {positional_matcher}
-                        _ => return Err(::onlyargs::CliError::Unknown(arg)),
                     }}
                 }}
 
