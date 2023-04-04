@@ -6,7 +6,6 @@ use error_iter::ErrorIter as _;
 use onlyargs::{CliError, OnlyArgs as _};
 use onlyargs_derive::OnlyArgs;
 use std::{path::PathBuf, process::ExitCode};
-use thiserror::Error;
 
 /// A basic argument parsing example with `onlyargs_derive`.
 /// Sums a list of numbers and writes the result to a file or standard output.
@@ -29,13 +28,40 @@ struct Args {
     verbose: bool,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
 enum Error {
-    #[error("CLI error")]
-    Cli(#[from] CliError),
+    Cli(CliError),
+    Io(std::io::Error),
+}
 
-    #[error("I/O error")]
-    Io(#[from] std::io::Error),
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cli(_) => write!(f, "Argument parsing error"),
+            Self::Io(_) => write!(f, "I/O error"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Cli(err) => Some(err),
+            Self::Io(err) => Some(err),
+        }
+    }
+}
+
+impl From<CliError> for Error {
+    fn from(value: CliError) -> Self {
+        Self::Cli(value)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value)
+    }
 }
 
 fn run() -> Result<(), Error> {

@@ -1,6 +1,7 @@
-use quote::ToTokens;
-use syn::parse::{discouraged::Speculative as _, Parse, ParseStream};
-use syn::{braced, parse_quote, Attribute, Expr, ExprLit, Ident, Lit, Path, Token, Visibility};
+use proc_macro::{
+    token_stream::IntoIter, Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream,
+    TokenTree,
+};
 
 #[derive(Debug)]
 pub(crate) struct ArgumentStruct {
@@ -31,7 +32,7 @@ pub(crate) struct ArgOption {
     pub(crate) short: Option<char>,
     pub(crate) ty_help: ArgType,
     pub(crate) doc: Vec<String>,
-    pub(crate) default: Option<Lit>,
+    pub(crate) default: Option<Literal>,
     pub(crate) optional: bool,
     pub(crate) positional: bool,
 }
@@ -53,21 +54,26 @@ pub(crate) enum ArgType {
     String,
 }
 
-impl Parse for ArgumentStruct {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let attrs = Attribute::parse_outer(input)?;
-        input.parse::<Visibility>()?;
-        input.parse::<Token![struct]>()?;
+#[derive(Debug)]
+struct Attribute {
+    name: Ident,
+    stream: TokenStream,
+}
 
-        let name = input.parse()?;
+struct Fork {
+    iter: IntoIter,
+    steps: usize,
+}
 
-        let content;
-        braced!(content in input);
-        let fields = content
-            .parse_terminated(Argument::parse, Token![,])?
-            .into_pairs()
-            .map(|pair| pair.into_value())
-            .collect::<Vec<_>>();
+impl ArgumentStruct {
+    pub(crate) fn parse(mut input: IntoIter) -> Result<Self, TokenStream> {
+        let attrs = parse_attributes(&mut input)?;
+        parse_visibility(&mut input)?;
+        expect_ident(&mut input, "struct")?;
+
+        let name = parse_ident(&mut input)?;
+        let content = parse_group(&mut input, Delimiter::Brace)?.into_iter();
+        let fields = Argument::parse(content)?;
 
         let mut flags = vec![];
         let mut options = vec![];
@@ -79,7 +85,10 @@ impl Parse for ArgumentStruct {
                 Argument::Option(opt) => match (opt.positional, &positional) {
                     (true, None) => positional = Some(opt),
                     (true, Some(_)) => {
-                        return Err(input.error("Positional arguments can only be specified once."));
+                        return Err(spanned_error(
+                            "Positional arguments can only be specified once.",
+                            Span::call_site(),
+                        ));
                     }
                     _ => options.push(opt),
                 },
@@ -88,254 +97,280 @@ impl Parse for ArgumentStruct {
 
         let doc = get_doc_comment(&attrs);
 
-        Ok(Self {
+        match input.next() {
+            None => Ok(Self {
+                name,
+                flags,
+                options,
+                positional,
+                doc,
+            }),
+            tree => Err(spanned_error("Unexpected token", parse_span(tree))),
+        }
+    }
+}
+
+impl Argument {
+    fn parse(mut input: IntoIter) -> Result<Vec<Self>, TokenStream> {
+        let mut args = vec![];
+
+        // TODO: This loop looks awful!
+        while input.clone().next().is_some() {
+            let attrs = parse_attributes(&mut input)?;
+
+            // Parse attributes
+            let mut default = None;
+            let mut long = false;
+            let mut short = None;
+            for attr in &attrs {
+                let name = attr.name.to_string();
+                match name.as_str() {
+                    "default" => {
+                        let mut stream = parse_group(
+                            &mut attr.stream.clone().into_iter(),
+                            Delimiter::Parenthesis,
+                        )?
+                        .into_iter();
+
+                        default = Some(parse_literal(&mut stream)?);
+                    }
+                    "long" => long = true,
+                    "short" => {
+                        let mut stream = parse_group(
+                            &mut attr.stream.clone().into_iter(),
+                            Delimiter::Parenthesis,
+                        )?
+                        .into_iter();
+                        let lit = parse_literal(&mut stream)?;
+
+                        short = Some(parse_char_literal(lit)?);
+                    }
+                    _ => (),
+                }
+            }
+
+            parse_visibility(&mut input)?;
+
+            let mut fork = Fork::new(&input);
+            if let Ok(mut flag) = ArgFlag::parse(&mut fork) {
+                input.by_ref().take(fork.steps).for_each(|_| ());
+
+                // Patch flag with attributes
+                flag.doc = get_doc_comment(&attrs);
+
+                if long {
+                    flag.short = None;
+                } else if short.is_some() {
+                    flag.short = short;
+                }
+
+                args.push(Self::Flag(flag))
+            } else if let Ok(mut opt) = ArgOption::parse(&mut input) {
+                opt.doc = get_doc_comment(&attrs);
+
+                opt.default = default;
+                if let Some(default) = opt.default.as_ref() {
+                    opt.optional = false;
+                    let default = default.to_string();
+                    if let Some(line) = opt.doc.last_mut() {
+                        line.push_str(&format!(" [default: {default}]"));
+                    } else {
+                        opt.doc.push(format!("[default: {default}]"));
+                    }
+                } else if !opt.optional {
+                    if let Some(line) = opt.doc.last_mut() {
+                        line.push_str(" [required]");
+                    } else {
+                        opt.doc.push("[required]".to_string());
+                    }
+                }
+
+                if long {
+                    opt.short = None;
+                } else if short.is_some() {
+                    opt.short = short;
+                }
+
+                args.push(Self::Option(opt));
+            } else {
+                return Err(spanned_error(
+                    "Expected a type suitable for CLI arguments",
+                    Span::call_site(),
+                ));
+            }
+        }
+
+        Ok(args)
+    }
+}
+
+impl ArgFlag {
+    fn parse(input: &mut Fork) -> Result<Self, TokenStream> {
+        let name = parse_ident(&mut input.iter)?;
+        input.steps += 1;
+        expect_punct(&mut input.iter, ':')?;
+        input.steps += 1;
+
+        expect_ident(&mut input.iter, "bool")?;
+        input.steps += 1;
+
+        if expect_punct(&mut input.iter, ',').is_ok() {
+            input.steps += 1;
+        }
+
+        // TODO: Add an attribute to disable short names
+        let short = name.to_string().chars().find(|ch| ch.is_ascii_alphabetic());
+
+        Ok(ArgFlag {
             name,
-            flags,
-            options,
-            positional,
-            doc,
+            short,
+            doc: vec![],
+            output: true,
         })
     }
-}
 
-impl Parse for Argument {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let attrs = Attribute::parse_outer(input)?;
-
-        // Parse attributes
-        let mut default = None;
-        let mut long = false;
-        let mut short = None;
-        for attr in &attrs {
-            if attr.path().is_ident("default") {
-                default = Some(attr.parse_args()?);
-            } else if attr.path().is_ident("long") {
-                long = true;
-            } else if attr.path().is_ident("short") {
-                let ch: Lit = attr.parse_args()?;
-                if let Lit::Char(ch) = ch {
-                    short = Some(ch.value());
-                }
-            }
-        }
-
-        input.parse::<Visibility>()?;
-
-        let fork = input.fork();
-        if let Ok(mut flag) = fork.parse::<ArgFlag>() {
-            input.advance_to(&fork);
-
-            // Patch flag with attributes
-            flag.doc = get_doc_comment(&attrs);
-
-            if long {
-                flag.short = None;
-            } else if short.is_some() {
-                flag.short = short;
-            }
-
-            Ok(Self::Flag(flag))
-        } else if let Ok(mut opt) = input.parse::<ArgOption>() {
-            opt.doc = get_doc_comment(&attrs);
-
-            opt.default = default;
-            if let Some(default) = opt.default.as_ref() {
-                opt.optional = false;
-                let default = default.to_token_stream().to_string();
-                if let Some(line) = opt.doc.last_mut() {
-                    line.push_str(&format!(" [default: {}]", default));
-                } else {
-                    opt.doc.push(format!("[default: {}]", default));
-                }
-            } else if !opt.optional {
-                if let Some(line) = opt.doc.last_mut() {
-                    line.push_str(" [required]");
-                } else {
-                    opt.doc.push("[required]".to_string());
-                }
-            }
-
-            if long {
-                opt.short = None;
-            } else if short.is_some() {
-                opt.short = short;
-            }
-
-            Ok(Self::Option(opt))
-        } else {
-            Err(input.error("Expected a type suitable for CLI arguments"))
+    pub(crate) fn as_view(&self) -> ArgView {
+        ArgView {
+            name: &self.name,
+            short: self.short,
+            ty_help: ArgType::Bool,
+            doc: &self.doc,
         }
     }
 }
 
-impl Parse for ArgFlag {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let name: Ident = input.parse()?;
-        input.parse::<Token![:]>()?;
+impl ArgOption {
+    fn parse(input: &mut IntoIter) -> Result<Self, TokenStream> {
+        let name = parse_ident(input)?;
+        expect_punct(input, ':')?;
 
-        // Any of the supported types
-        let ty: Path = input.parse()?;
-
-        if ty == parse_quote!(bool) {
-            // TODO: Add an attribute to disable short names
-            let short = name.to_string().chars().find(|ch| ch.is_ascii_alphabetic());
-
-            Ok(ArgFlag {
-                name,
-                short,
-                doc: vec![],
-                output: true,
-            })
-        } else {
-            Err(input.error("Expected a bool"))
-        }
-    }
-}
-
-impl Parse for ArgOption {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let name: Ident = input.parse()?;
-        input.parse::<Token![:]>()?;
-
-        // Any of the supported types
-        let ty: Path = input.parse()?;
+        // TODO: Parse supported paths
+        let path = parse_path(input)?;
 
         // We have to check multiple possible paths for types that are not included in
         // `std::prelude`. The type system is not available here, so we need to make some educated
         // guesses about field types.
         let required_paths = [
-            parse_quote!(::std::path::PathBuf),
-            parse_quote!(std::path::PathBuf),
-            parse_quote!(path::PathBuf),
-            parse_quote!(PathBuf),
+            "::std::path::PathBuf",
+            "std::path::PathBuf",
+            "path::PathBuf",
+            "PathBuf",
         ];
         let required_os_strings = [
-            parse_quote!(::std::ffi::OsString),
-            parse_quote!(std::ffi::OsString),
-            parse_quote!(ffi::OsString),
-            parse_quote!(OsString),
+            "::std::ffi::OsString",
+            "std::ffi::OsString",
+            "ffi::OsString",
+            "OsString",
         ];
         let required_numbers = [
-            parse_quote!(f32),
-            parse_quote!(f64),
-            parse_quote!(i8),
-            parse_quote!(i16),
-            parse_quote!(i32),
-            parse_quote!(i64),
-            parse_quote!(i128),
-            parse_quote!(isize),
-            parse_quote!(u8),
-            parse_quote!(u16),
-            parse_quote!(u32),
-            parse_quote!(u64),
-            parse_quote!(u128),
-            parse_quote!(usize),
+            "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64",
+            "u128", "usize",
         ];
         let positional_paths = [
-            parse_quote!(Vec<::std::path::PathBuf>),
-            parse_quote!(Vec<std::path::PathBuf>),
-            parse_quote!(Vec<path::PathBuf>),
-            parse_quote!(Vec<PathBuf>),
+            "Vec<::std::path::PathBuf>",
+            "Vec<std::path::PathBuf>",
+            "Vec<path::PathBuf>",
+            "Vec<PathBuf>",
         ];
         let positional_os_strings = [
-            parse_quote!(Vec<::std::ffi::OsString>),
-            parse_quote!(Vec<std::ffi::OsString>),
-            parse_quote!(Vec<ffi::OsString>),
-            parse_quote!(Vec<OsString>),
+            "Vec<::std::ffi::OsString>",
+            "Vec<std::ffi::OsString>",
+            "Vec<ffi::OsString>",
+            "Vec<OsString>",
         ];
         let positional_numbers = [
-            parse_quote!(Vec<f32>),
-            parse_quote!(Vec<f64>),
-            parse_quote!(Vec<i8>),
-            parse_quote!(Vec<i16>),
-            parse_quote!(Vec<i32>),
-            parse_quote!(Vec<i64>),
-            parse_quote!(Vec<i128>),
-            parse_quote!(Vec<isize>),
-            parse_quote!(Vec<u8>),
-            parse_quote!(Vec<u16>),
-            parse_quote!(Vec<u32>),
-            parse_quote!(Vec<u64>),
-            parse_quote!(Vec<u128>),
-            parse_quote!(Vec<usize>),
+            "Vec<f32>",
+            "Vec<f64>",
+            "Vec<i8>",
+            "Vec<i16>",
+            "Vec<i32>",
+            "Vec<i64>",
+            "Vec<i128>",
+            "Vec<isize>",
+            "Vec<u8>",
+            "Vec<u16>",
+            "Vec<u32>",
+            "Vec<u64>",
+            "Vec<u128>",
+            "Vec<usize>",
         ];
         let optional_paths = [
-            parse_quote!(Option<::std::path::PathBuf>),
-            parse_quote!(Option<std::path::PathBuf>),
-            parse_quote!(Option<path::PathBuf>),
-            parse_quote!(Option<PathBuf>),
+            "Option<::std::path::PathBuf>",
+            "Option<std::path::PathBuf>",
+            "Option<path::PathBuf>",
+            "Option<PathBuf>",
         ];
         let optional_os_strings = [
-            parse_quote!(Option<::std::ffi::OsString>),
-            parse_quote!(Option<std::ffi::OsString>),
-            parse_quote!(Option<ffi::OsString>),
-            parse_quote!(Option<OsString>),
+            "Option<::std::ffi::OsString>",
+            "Option<std::ffi::OsString>",
+            "Option<ffi::OsString>",
+            "Option<OsString>",
         ];
         let optional_numbers = [
-            parse_quote!(Option<f32>),
-            parse_quote!(Option<f64>),
-            parse_quote!(Option<i8>),
-            parse_quote!(Option<i16>),
-            parse_quote!(Option<i32>),
-            parse_quote!(Option<i64>),
-            parse_quote!(Option<i128>),
-            parse_quote!(Option<isize>),
-            parse_quote!(Option<u8>),
-            parse_quote!(Option<u16>),
-            parse_quote!(Option<u32>),
-            parse_quote!(Option<u64>),
-            parse_quote!(Option<u128>),
-            parse_quote!(Option<usize>),
+            "Option<f32>",
+            "Option<f64>",
+            "Option<i8>",
+            "Option<i16>",
+            "Option<i32>",
+            "Option<i64>",
+            "Option<i128>",
+            "Option<isize>",
+            "Option<u8>",
+            "Option<u16>",
+            "Option<u32>",
+            "Option<u64>",
+            "Option<u128>",
+            "Option<usize>",
         ];
 
-        let optional = if optional_paths.contains(&ty)
-            || optional_os_strings.contains(&ty)
-            || optional_numbers.contains(&ty)
-            || ty == parse_quote!(Option<String>)
-            || positional_paths.contains(&ty)
-            || positional_os_strings.contains(&ty)
-            || positional_numbers.contains(&ty)
-            || ty == parse_quote!(Vec<String>)
+        let optional = if optional_paths.contains(&path.as_str())
+            || optional_os_strings.contains(&path.as_str())
+            || optional_numbers.contains(&path.as_str())
+            || path == "Option<String>"
+            || positional_paths.contains(&path.as_str())
+            || positional_os_strings.contains(&path.as_str())
+            || positional_numbers.contains(&path.as_str())
+            || path == "Vec<String>"
         {
             true
-        } else if required_paths.contains(&ty)
-            || required_os_strings.contains(&ty)
-            || required_numbers.contains(&ty)
-            || ty == parse_quote!(String)
+        } else if required_paths.contains(&path.as_str())
+            || required_os_strings.contains(&path.as_str())
+            || required_numbers.contains(&path.as_str())
+            || path == "String"
         {
             false
         } else {
-            return Err(input.error("Expected bool, PathBuf, String, OsString, integer or float"));
+            return Err(spanned_error(
+                "Expected bool, PathBuf, String, OsString, integer or float",
+                Span::call_site(),
+            ));
         };
 
-        let ty_help = if optional_paths.contains(&ty)
-            || required_paths.contains(&ty)
-            || positional_paths.contains(&ty)
+        let ty_help = if optional_paths.contains(&path.as_str())
+            || required_paths.contains(&path.as_str())
+            || positional_paths.contains(&path.as_str())
         {
             ArgType::Path
-        } else if optional_os_strings.contains(&ty)
-            || required_os_strings.contains(&ty)
-            || positional_os_strings.contains(&ty)
+        } else if optional_os_strings.contains(&path.as_str())
+            || required_os_strings.contains(&path.as_str())
+            || positional_os_strings.contains(&path.as_str())
         {
             ArgType::OsString
-        } else if ty == parse_quote!(String)
-            || ty == parse_quote!(Vec<String>)
-            || ty == parse_quote!(Option<String>)
-        {
+        } else if path == "String" || path == "Vec<String>" || path == "Option<String>" {
             ArgType::String
-        } else if optional_numbers.contains(&ty)
-            || required_numbers.contains(&ty)
-            || positional_numbers.contains(&ty)
+        } else if optional_numbers.contains(&path.as_str())
+            || required_numbers.contains(&path.as_str())
+            || positional_numbers.contains(&path.as_str())
         {
             ArgType::Number
         } else {
             unreachable!();
         };
 
-        let positional = positional_paths.contains(&ty)
-            || positional_os_strings.contains(&ty)
-            || positional_numbers.contains(&ty)
-            || ty == parse_quote!(Vec<String>);
+        let positional = positional_paths.contains(&path.as_str())
+            || positional_os_strings.contains(&path.as_str())
+            || positional_numbers.contains(&path.as_str())
+            || path == "Vec<String>";
 
         // TODO: Add an attribute to disable short names
         let short = name.to_string().chars().find(|ch| ch.is_ascii_alphabetic());
@@ -350,20 +385,7 @@ impl Parse for ArgOption {
             positional,
         })
     }
-}
 
-impl ArgFlag {
-    pub(crate) fn as_view(&self) -> ArgView {
-        ArgView {
-            name: &self.name,
-            short: self.short,
-            ty_help: ArgType::Bool,
-            doc: &self.doc,
-        }
-    }
-}
-
-impl ArgOption {
     pub(crate) fn as_view(&self) -> ArgView {
         ArgView {
             name: &self.name,
@@ -385,24 +407,204 @@ impl ArgType {
     }
 }
 
+impl Fork {
+    fn new(iter: &IntoIter) -> Self {
+        Self {
+            iter: iter.clone(),
+            steps: 0,
+        }
+    }
+}
+
+pub(crate) fn spanned_error(msg: &str, span: Span) -> TokenStream {
+    TokenStream::from_iter([
+        TokenTree::Ident(Ident::new("compile_error", span)),
+        TokenTree::Punct(Punct::new('!', Spacing::Alone)),
+        TokenTree::Group(Group::new(
+            Delimiter::Parenthesis,
+            TokenTree::from(Literal::string(msg)).into(),
+        )),
+        TokenTree::Punct(Punct::new(';', Spacing::Alone)),
+    ])
+}
+
 fn get_doc_comment(attrs: &[Attribute]) -> Vec<String> {
     attrs
         .iter()
         .filter_map(|attr| {
-            if attr.path().is_ident("doc") {
-                attr.meta
-                    .require_name_value()
-                    .map(|nv| match &nv.value {
-                        Expr::Lit(ExprLit {
-                            lit: Lit::Str(lit), ..
-                        }) => Some(lit.value().trim().to_string()),
-                        _ => None,
-                    })
+            if attr.name.to_string() == "doc" {
+                let mut stream = attr.stream.clone().into_iter();
+
+                match stream.next() {
+                    Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => (),
+                    _ => return None,
+                }
+
+                parse_literal(&mut stream)
+                    .and_then(parse_string_literal)
                     .ok()
-                    .flatten()
             } else {
                 None
             }
         })
         .collect()
+}
+
+fn parse_attributes(input: &mut IntoIter) -> Result<Vec<Attribute>, TokenStream> {
+    let mut attrs = vec![];
+
+    loop {
+        match input.clone().next() {
+            Some(TokenTree::Punct(punct)) if punct.as_char() == '#' => input.next(),
+            _ => break,
+        };
+
+        let mut group = match input.next() {
+            Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Bracket => {
+                group.stream()
+            }
+            tree => return Err(spanned_error("Expected `[`", parse_span(tree))),
+        }
+        .into_iter();
+
+        match group.next() {
+            Some(TokenTree::Ident(ident)) => {
+                attrs.push(Attribute {
+                    name: ident,
+                    stream: TokenStream::from_iter(group),
+                });
+            }
+            tree => return Err(spanned_error("Expected ident", parse_span(tree))),
+        }
+    }
+
+    Ok(attrs)
+}
+
+fn parse_visibility(input: &mut IntoIter) -> Result<(), TokenStream> {
+    match input.clone().next() {
+        Some(TokenTree::Ident(ident)) if ident.to_string() == "pub" => input.next(),
+        _ => return Ok(()),
+    };
+
+    match input.clone().next() {
+        Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Parenthesis => {
+            input.next();
+        }
+        _ => return Ok(()),
+    }
+
+    Ok(())
+}
+
+fn parse_path(input: &mut IntoIter) -> Result<String, TokenStream> {
+    let mut path = String::new();
+
+    for tree in input.by_ref() {
+        match tree {
+            TokenTree::Punct(punct) if punct.as_char() == ',' => break,
+            TokenTree::Punct(punct) => path.push(punct.as_char()),
+            TokenTree::Ident(ident) => path.push_str(&ident.to_string()),
+            tree => return Err(spanned_error("Unexpected token", parse_span(Some(tree)))),
+        }
+    }
+
+    Ok(path)
+}
+
+fn expect_ident(input: &mut IntoIter, expect: &str) -> Result<(), TokenStream> {
+    parse_ident(input).and_then(|ident| {
+        if ident.to_string() == expect {
+            Ok(())
+        } else {
+            Err(spanned_error(&format!("Expected `{expect}`"), ident.span()))
+        }
+    })
+}
+
+fn expect_punct(input: &mut IntoIter, expect: char) -> Result<(), TokenStream> {
+    parse_punct(input).and_then(|punct| {
+        if punct.as_char() == expect {
+            Ok(())
+        } else {
+            Err(spanned_error(&format!("Expected `{expect}`"), punct.span()))
+        }
+    })
+}
+
+fn parse_group(input: &mut IntoIter, delim: Delimiter) -> Result<TokenStream, TokenStream> {
+    Ok(match input.next() {
+        Some(TokenTree::Group(group)) if group.delimiter() == delim => group.stream(),
+        tree => {
+            let delim = match delim {
+                Delimiter::Brace => "{",
+                Delimiter::Bracket => "[",
+                Delimiter::None => "delimiter",
+                Delimiter::Parenthesis => "(",
+            };
+            let msg = format!("Expected {delim}");
+            return Err(spanned_error(&msg, parse_span(tree)));
+        }
+    })
+}
+
+fn parse_ident(input: &mut IntoIter) -> Result<Ident, TokenStream> {
+    Ok(match input.next() {
+        Some(TokenTree::Ident(ident)) => ident,
+        tree => return Err(spanned_error("Expected identifier", parse_span(tree))),
+    })
+}
+
+fn parse_literal(input: &mut IntoIter) -> Result<Literal, TokenStream> {
+    Ok(match input.next() {
+        Some(TokenTree::Literal(lit)) => lit,
+        tree => return Err(spanned_error("Expected literal", parse_span(tree))),
+    })
+}
+
+fn parse_punct(input: &mut IntoIter) -> Result<Punct, TokenStream> {
+    Ok(match input.next() {
+        Some(TokenTree::Punct(punct)) => punct,
+        tree => return Err(spanned_error("Expected punctuation", parse_span(tree))),
+    })
+}
+
+fn parse_char_literal(lit: Literal) -> Result<char, TokenStream> {
+    let string = format!("{lit}");
+    if string.len() == 3 || !string.starts_with('\'') || !string.ends_with('\'') {
+        Err(spanned_error("Expected char literal", lit.span()))
+    } else {
+        // Strip single quotes.
+        string
+            .chars()
+            .nth(1)
+            .ok_or_else(|| spanned_error("Expected char literal", lit.span()))
+    }
+}
+
+fn parse_string_literal(lit: Literal) -> Result<String, TokenStream> {
+    let string = format!("{lit}");
+    if !string.starts_with('"') || !string.ends_with('"') {
+        Err(spanned_error("Expected string literal", lit.span()))
+    } else {
+        // Strip double quotes and escapes.
+        Ok(string[1..string.len() - 1]
+            .trim()
+            .replace(r#"\""#, r#"""#)
+            .replace(r"\n", "\n")
+            .replace(r"\r", "\r")
+            .replace(r"\t", "\t")
+            .replace(r"\'", "'")
+            .replace(r"\\", r"\"))
+    }
+}
+
+fn parse_span(opt: Option<TokenTree>) -> Span {
+    match opt {
+        Some(TokenTree::Group(group)) => group.span(),
+        Some(TokenTree::Ident(ident)) => ident.span(),
+        Some(TokenTree::Punct(punct)) => punct.span(),
+        Some(TokenTree::Literal(lit)) => lit.span(),
+        None => Span::call_site(),
+    }
 }

@@ -13,5 +13,3 @@ proc-macro = true
 
 [dependencies]
 onlyargs = { version = "0.1", path = ".." }
-quote = "1"
-syn = { version = "2", features = ["extra-traits"] }

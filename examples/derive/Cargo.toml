@@ -9,4 +9,4 @@ publish = false
 error-iter = "0.4"
 onlyargs = { path = "../.." }
 onlyargs_derive = { path = "../../onlyargs_derive" }
-thiserror = "1"
+# thiserror = "1"
