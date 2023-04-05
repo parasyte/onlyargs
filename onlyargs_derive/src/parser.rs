@@ -71,7 +71,7 @@ impl ArgumentStruct {
         expect_ident(&mut input, "struct")?;
 
         let name = parse_ident(&mut input)?;
-        let content = parse_group(&mut input, Delimiter::Brace)?.into_iter();
+        let content = expect_group(&mut input, Delimiter::Brace)?.into_iter();
         let fields = Argument::parse(content)?;
 
         let mut flags = vec![];
@@ -125,7 +125,7 @@ impl Argument {
                 let name = attr.name.to_string();
                 match name.as_str() {
                     "default" => {
-                        let mut stream = parse_group(
+                        let mut stream = expect_group(
                             &mut attr.stream.clone().into_iter(),
                             Delimiter::Parenthesis,
                         )?
@@ -135,7 +135,7 @@ impl Argument {
                     }
                     "long" => long = true,
                     "short" => {
-                        let mut stream = parse_group(
+                        let mut stream = expect_group(
                             &mut attr.stream.clone().into_iter(),
                             Delimiter::Parenthesis,
                         )?
@@ -475,7 +475,7 @@ fn parse_attributes(input: &mut IntoIter) -> Result<Vec<Attribute>, TokenStream>
                     stream: TokenStream::from_iter(group),
                 });
             }
-            tree => return Err(spanned_error("Expected ident", parse_span(tree))),
+            tree => return Err(spanned_error("Expected identifier", parse_span(tree))),
         }
     }
 
@@ -522,6 +522,24 @@ fn parse_path(input: &mut IntoIter) -> Result<(String, Span), TokenStream> {
     Ok((path, span))
 }
 
+fn expect_group(input: &mut IntoIter, expect: Delimiter) -> Result<TokenStream, TokenStream> {
+    parse_group(input).and_then(|group| {
+        let delim = group.delimiter();
+        if delim == expect {
+            Ok(group.stream())
+        } else {
+            let delim = match delim {
+                Delimiter::Brace => "{",
+                Delimiter::Bracket => "[",
+                Delimiter::None => "delimiter",
+                Delimiter::Parenthesis => "(",
+            };
+
+            Err(spanned_error(format!("Expected `{delim}`"), group.span()))
+        }
+    })
+}
+
 fn expect_ident(input: &mut IntoIter, expect: &str) -> Result<(), TokenStream> {
     parse_ident(input).and_then(|ident| {
         if ident.to_string() == expect {
@@ -542,40 +560,32 @@ fn expect_punct(input: &mut IntoIter, expect: char) -> Result<(), TokenStream> {
     })
 }
 
-fn parse_group(input: &mut IntoIter, delim: Delimiter) -> Result<TokenStream, TokenStream> {
-    Ok(match input.next() {
-        Some(TokenTree::Group(group)) if group.delimiter() == delim => group.stream(),
-        tree => {
-            let delim = match delim {
-                Delimiter::Brace => "{",
-                Delimiter::Bracket => "[",
-                Delimiter::None => "delimiter",
-                Delimiter::Parenthesis => "(",
-            };
-            return Err(spanned_error(format!("Expected {delim}"), parse_span(tree)));
-        }
-    })
+fn parse_group(input: &mut IntoIter) -> Result<Group, TokenStream> {
+    match input.next() {
+        Some(TokenTree::Group(group)) => Ok(group),
+        tree => Err(spanned_error("Expected delimiter", parse_span(tree))),
+    }
 }
 
 fn parse_ident(input: &mut IntoIter) -> Result<Ident, TokenStream> {
-    Ok(match input.next() {
-        Some(TokenTree::Ident(ident)) => ident,
-        tree => return Err(spanned_error("Expected identifier", parse_span(tree))),
-    })
+    match input.next() {
+        Some(TokenTree::Ident(ident)) => Ok(ident),
+        tree => Err(spanned_error("Expected identifier", parse_span(tree))),
+    }
 }
 
 fn parse_literal(input: &mut IntoIter) -> Result<Literal, TokenStream> {
-    Ok(match input.next() {
-        Some(TokenTree::Literal(lit)) => lit,
-        tree => return Err(spanned_error("Expected literal", parse_span(tree))),
-    })
+    match input.next() {
+        Some(TokenTree::Literal(lit)) => Ok(lit),
+        tree => Err(spanned_error("Expected literal", parse_span(tree))),
+    }
 }
 
 fn parse_punct(input: &mut IntoIter) -> Result<Punct, TokenStream> {
-    Ok(match input.next() {
-        Some(TokenTree::Punct(punct)) => punct,
-        tree => return Err(spanned_error("Expected punctuation", parse_span(tree))),
-    })
+    match input.next() {
+        Some(TokenTree::Punct(punct)) => Ok(punct),
+        tree => Err(spanned_error("Expected punctuation", parse_span(tree))),
+    }
 }
 
 fn parse_char_literal(lit: Literal) -> Result<char, TokenStream> {
