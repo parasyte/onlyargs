@@ -501,13 +501,23 @@ fn parse_visibility(input: &mut IntoIter) -> Result<(), TokenStream> {
 fn parse_path(input: &mut IntoIter) -> Result<(String, Span), TokenStream> {
     let mut path = String::new();
     let mut span = None;
+    let mut nesting = 0;
 
     for tree in input.by_ref() {
         match tree {
-            TokenTree::Punct(punct) if punct.as_char() == ',' => break,
+            TokenTree::Punct(punct) if punct.as_char() == ',' && nesting == 0 => break,
             TokenTree::Punct(punct) => {
+                let ch = punct.as_char();
+
+                // Handle nesting with `<...>`
+                if ch == '<' {
+                    nesting += 1;
+                } else if ch == '>' && punct.spacing() == Spacing::Joint {
+                    nesting -= 1;
+                }
+
                 span.get_or_insert_with(|| punct.span());
-                path.push(punct.as_char());
+                path.push(ch);
             }
             TokenTree::Ident(ident) => {
                 span.get_or_insert_with(|| ident.span());
