@@ -1,7 +1,17 @@
-use proc_macro::{
-    token_stream::IntoIter, Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream,
-    TokenTree,
-};
+use proc_macro::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
+use std::iter::Peekable;
+
+type TokenIter = Peekable<proc_macro::token_stream::IntoIter>;
+
+trait TokenIterExt {
+    fn iter(self) -> TokenIter;
+}
+
+impl TokenIterExt for TokenStream {
+    fn iter(self) -> TokenIter {
+        self.into_iter().peekable()
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct ArgumentStruct {
@@ -60,18 +70,19 @@ struct Attribute {
 }
 
 struct Fork {
-    iter: IntoIter,
+    iter: TokenIter,
     steps: usize,
 }
 
 impl ArgumentStruct {
-    pub(crate) fn parse(mut input: IntoIter) -> Result<Self, TokenStream> {
+    pub(crate) fn parse(input: TokenStream) -> Result<Self, TokenStream> {
+        let mut input = input.iter();
         let attrs = parse_attributes(&mut input)?;
         parse_visibility(&mut input)?;
         expect_ident(&mut input, "struct")?;
 
         let name = parse_ident(&mut input)?;
-        let content = expect_group(&mut input, Delimiter::Brace)?.into_iter();
+        let content = expect_group(&mut input, Delimiter::Brace)?;
         let fields = Argument::parse(content)?;
 
         let mut flags = vec![];
@@ -110,11 +121,11 @@ impl ArgumentStruct {
 }
 
 impl Argument {
-    fn parse(mut input: IntoIter) -> Result<Vec<Self>, TokenStream> {
+    fn parse(input: TokenStream) -> Result<Vec<Self>, TokenStream> {
+        let mut input = input.iter();
         let mut args = vec![];
 
-        // TODO: This loop looks awful!
-        while input.clone().next().is_some() {
+        while input.peek().is_some() {
             let attrs = parse_attributes(&mut input)?;
 
             // Parse attributes
@@ -125,21 +136,17 @@ impl Argument {
                 let name = attr.name.to_string();
                 match name.as_str() {
                     "default" => {
-                        let mut stream = expect_group(
-                            &mut attr.stream.clone().into_iter(),
-                            Delimiter::Parenthesis,
-                        )?
-                        .into_iter();
+                        let mut stream =
+                            expect_group(&mut attr.stream.clone().iter(), Delimiter::Parenthesis)?
+                                .iter();
 
                         default = Some(parse_literal(&mut stream)?);
                     }
                     "long" => long = true,
                     "short" => {
-                        let mut stream = expect_group(
-                            &mut attr.stream.clone().into_iter(),
-                            Delimiter::Parenthesis,
-                        )?
-                        .into_iter();
+                        let mut stream =
+                            expect_group(&mut attr.stream.clone().iter(), Delimiter::Parenthesis)?
+                                .iter();
                         let lit = parse_literal(&mut stream)?;
 
                         short = Some(parse_char_literal(lit)?);
@@ -239,7 +246,7 @@ impl ArgFlag {
 }
 
 impl ArgOption {
-    fn parse(input: &mut IntoIter) -> Result<Self, TokenStream> {
+    fn parse(input: &mut TokenIter) -> Result<Self, TokenStream> {
         let name = parse_ident(input)?;
         expect_punct(input, ':')?;
 
@@ -406,7 +413,7 @@ impl ArgType {
 }
 
 impl Fork {
-    fn new(iter: &IntoIter) -> Self {
+    fn new(iter: &TokenIter) -> Self {
         Self {
             iter: iter.clone(),
             steps: 0,
@@ -434,7 +441,7 @@ fn get_doc_comment(attrs: &[Attribute]) -> Vec<String> {
         .iter()
         .filter_map(|attr| {
             if attr.name.to_string() == "doc" {
-                let mut stream = attr.stream.clone().into_iter();
+                let mut stream = attr.stream.clone().iter();
 
                 match stream.next() {
                     Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => (),
@@ -451,11 +458,11 @@ fn get_doc_comment(attrs: &[Attribute]) -> Vec<String> {
         .collect()
 }
 
-fn parse_attributes(input: &mut IntoIter) -> Result<Vec<Attribute>, TokenStream> {
+fn parse_attributes(input: &mut TokenIter) -> Result<Vec<Attribute>, TokenStream> {
     let mut attrs = vec![];
 
     loop {
-        match input.clone().next() {
+        match input.peek() {
             Some(TokenTree::Punct(punct)) if punct.as_char() == '#' => input.next(),
             _ => break,
         };
@@ -482,13 +489,13 @@ fn parse_attributes(input: &mut IntoIter) -> Result<Vec<Attribute>, TokenStream>
     Ok(attrs)
 }
 
-fn parse_visibility(input: &mut IntoIter) -> Result<(), TokenStream> {
-    match input.clone().next() {
+fn parse_visibility(input: &mut TokenIter) -> Result<(), TokenStream> {
+    match input.peek() {
         Some(TokenTree::Ident(ident)) if ident.to_string() == "pub" => input.next(),
         _ => return Ok(()),
     };
 
-    match input.clone().next() {
+    match input.peek() {
         Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Parenthesis => {
             input.next();
         }
@@ -498,12 +505,12 @@ fn parse_visibility(input: &mut IntoIter) -> Result<(), TokenStream> {
     Ok(())
 }
 
-fn parse_path(input: &mut IntoIter) -> Result<(String, Span), TokenStream> {
+fn parse_path(input: &mut TokenIter) -> Result<(String, Span), TokenStream> {
     let mut path = String::new();
     let mut span = None;
     let mut nesting = 0;
 
-    for tree in input.by_ref() {
+    for tree in input {
         match tree {
             TokenTree::Punct(punct) if punct.as_char() == ',' && nesting == 0 => break,
             TokenTree::Punct(punct) => {
@@ -532,7 +539,7 @@ fn parse_path(input: &mut IntoIter) -> Result<(String, Span), TokenStream> {
     Ok((path, span))
 }
 
-fn expect_group(input: &mut IntoIter, expect: Delimiter) -> Result<TokenStream, TokenStream> {
+fn expect_group(input: &mut TokenIter, expect: Delimiter) -> Result<TokenStream, TokenStream> {
     parse_group(input).and_then(|group| {
         let delim = group.delimiter();
         if delim == expect {
@@ -550,7 +557,7 @@ fn expect_group(input: &mut IntoIter, expect: Delimiter) -> Result<TokenStream, 
     })
 }
 
-fn expect_ident(input: &mut IntoIter, expect: &str) -> Result<(), TokenStream> {
+fn expect_ident(input: &mut TokenIter, expect: &str) -> Result<(), TokenStream> {
     parse_ident(input).and_then(|ident| {
         if ident.to_string() == expect {
             Ok(())
@@ -560,7 +567,7 @@ fn expect_ident(input: &mut IntoIter, expect: &str) -> Result<(), TokenStream> {
     })
 }
 
-fn expect_punct(input: &mut IntoIter, expect: char) -> Result<(), TokenStream> {
+fn expect_punct(input: &mut TokenIter, expect: char) -> Result<(), TokenStream> {
     parse_punct(input).and_then(|punct| {
         if punct.as_char() == expect {
             Ok(())
@@ -570,28 +577,28 @@ fn expect_punct(input: &mut IntoIter, expect: char) -> Result<(), TokenStream> {
     })
 }
 
-fn parse_group(input: &mut IntoIter) -> Result<Group, TokenStream> {
+fn parse_group(input: &mut TokenIter) -> Result<Group, TokenStream> {
     match input.next() {
         Some(TokenTree::Group(group)) => Ok(group),
         tree => Err(spanned_error("Expected delimiter", parse_span(tree))),
     }
 }
 
-fn parse_ident(input: &mut IntoIter) -> Result<Ident, TokenStream> {
+fn parse_ident(input: &mut TokenIter) -> Result<Ident, TokenStream> {
     match input.next() {
         Some(TokenTree::Ident(ident)) => Ok(ident),
         tree => Err(spanned_error("Expected identifier", parse_span(tree))),
     }
 }
 
-fn parse_literal(input: &mut IntoIter) -> Result<Literal, TokenStream> {
+fn parse_literal(input: &mut TokenIter) -> Result<Literal, TokenStream> {
     match input.next() {
         Some(TokenTree::Literal(lit)) => Ok(lit),
         tree => Err(spanned_error("Expected literal", parse_span(tree))),
     }
 }
 
-fn parse_punct(input: &mut IntoIter) -> Result<Punct, TokenStream> {
+fn parse_punct(input: &mut TokenIter) -> Result<Punct, TokenStream> {
     match input.next() {
         Some(TokenTree::Punct(punct)) => Ok(punct),
         tree => Err(spanned_error("Expected punctuation", parse_span(tree))),

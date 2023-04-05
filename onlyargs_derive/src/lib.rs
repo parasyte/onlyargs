@@ -79,7 +79,7 @@ mod parser;
 /// See the [root module documentation](crate) for the DSL specification.
 #[proc_macro_derive(OnlyArgs, attributes(default, long, short))]
 pub fn derive_parser(input: TokenStream) -> TokenStream {
-    let ast = match ArgumentStruct::parse(input.into_iter()) {
+    let ast = match ArgumentStruct::parse(input) {
         Ok(ast) => ast,
         Err(err) => return err,
     };
