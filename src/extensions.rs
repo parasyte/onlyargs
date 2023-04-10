@@ -7,27 +7,47 @@ use std::str::FromStr;
 /// An extension trait for `Option<OsString>` that provides some parsers that are useful for CLIs.
 pub trait ArgExt {
     /// Parse an argument into a `String`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the argument is `None` or not valid UTF-8.
     fn parse_str<N>(self, name: N) -> Result<String, CliError>
     where
         N: Into<String>;
 
     /// Parse an argument into a `PathBuf`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the argument is `None`.
     fn parse_path<N>(self, name: N) -> Result<PathBuf, CliError>
     where
         N: Into<String>;
 
     /// Parse an argument into an `OsString`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the argument is `None`.
     fn parse_osstr<N>(self, name: N) -> Result<OsString, CliError>
     where
         N: Into<String>;
 
     /// Parse an argument into a primitive integer.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the argument is `None` or not a valid integer.
     fn parse_int<T, N>(self, name: N) -> Result<T, CliError>
     where
         N: Into<String>,
         T: FromStr<Err = ParseIntError>;
 
     /// Parse an argument into a primitive floating point number.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the argument is `None` or not valid floating point number.
     fn parse_float<T, N>(self, name: N) -> Result<T, CliError>
     where
         N: Into<String>,
@@ -42,6 +62,10 @@ pub trait RequiredArgExt {
     type Inner;
 
     /// Unwrap an argument that is required by the CLI.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the argument is `None`.
     fn required<N>(self, name: N) -> Result<Self::Inner, CliError>
     where
         N: Into<String>;

@@ -5,13 +5,12 @@ version = "0.1.0"
 authors = ["Jay Oster <jay@kodewerx.org>"]
 edition = "2021"
 keywords = ["cli", "arg", "argument", "parse", "parser"]
-categories = ["Command-line interface"]
+categories = ["command-line-interface"]
 license = "MIT"
 
 [lib]
 proc-macro = true
 
 [dependencies]
+myn = { git = "https://github.com/parasyte/myn.git", rev = "c86196dc061a2bea10363c9ed3fb7091a70e3984" }
 onlyargs = { version = "0.1", path = ".." }
-quote = "1"
-syn = { version = "2", features = ["extra-traits"] }

@@ -5,8 +5,8 @@
 use error_iter::ErrorIter as _;
 use onlyargs::{CliError, OnlyArgs as _};
 use onlyargs_derive::OnlyArgs;
+use onlyerror::Error;
 use std::{path::PathBuf, process::ExitCode};
-use thiserror::Error;
 
 /// A basic argument parsing example with `onlyargs_derive`.
 /// Sums a list of numbers and writes the result to a file or standard output.
@@ -31,10 +31,10 @@ struct Args {
 
 #[derive(Debug, Error)]
 enum Error {
-    #[error("CLI error")]
+    /// Argument parsing error.
     Cli(#[from] CliError),
 
-    #[error("I/O error")]
+    /// I/O error.
     Io(#[from] std::io::Error),
 }
 

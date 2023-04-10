@@ -67,29 +67,35 @@
 //! becomes the "dumping ground" for all positional arguments, which are any args that do not match
 //! an existing field, or any arguments following the `--` "stop parsing" sentinel.
 
-// TODO: Redo this whole thing without `quote` and `syn` to optimize compile-time.
-use crate::parser::*;
-use proc_macro::TokenStream;
-use quote::quote;
-use std::collections::HashMap;
-use syn::{parse_macro_input, parse_quote, Ident};
+#![forbid(unsafe_code)]
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+
+use crate::parser::{ArgFlag, ArgOption, ArgType, ArgView, ArgumentStruct};
+use myn::utils::spanned_error;
+use proc_macro::{Ident, Span, TokenStream};
+use std::{collections::HashMap, str::FromStr as _};
 
 mod parser;
 
 /// See the [root module documentation](crate) for the DSL specification.
+#[allow(clippy::too_many_lines)]
 #[proc_macro_derive(OnlyArgs, attributes(default, long, short))]
 pub fn derive_parser(input: TokenStream) -> TokenStream {
-    let ast = parse_macro_input!(input as ArgumentStruct);
+    let ast = match ArgumentStruct::parse(input) {
+        Ok(ast) => ast,
+        Err(err) => return err,
+    };
 
     let mut flags = vec![
         ArgFlag {
-            name: parse_quote!(help),
+            name: Ident::new("help", Span::call_site()),
             short: Some('h'),
             doc: vec!["Show this help message.".to_string()],
             output: false,
         },
         ArgFlag {
-            name: parse_quote!(version),
+            name: Ident::new("version", Span::call_site()),
             short: Some('V'),
             doc: vec!["Show the application version.".to_string()],
             output: false,
@@ -101,199 +107,234 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
     let mut dupes = HashMap::new();
     for flag in &flags {
         if let Err(err) = dedupe(&mut dupes, flag.as_view()) {
-            return err.into_compile_error().into();
+            return err;
         }
     }
     for opt in &ast.options {
         if let Err(err) = dedupe(&mut dupes, opt.as_view()) {
-            return err.into_compile_error().into();
+            return err;
         }
     }
 
     // Produce help text for all arguments.
-    let max_width = get_max_width(flags.iter().map(|arg| arg.as_view()));
-    let flags_help = flags.iter().map(|arg| to_help(arg.as_view(), max_width));
+    let max_width = get_max_width(flags.iter().map(ArgFlag::as_view));
+    let flags_help = flags
+        .iter()
+        .map(|arg| to_help(arg.as_view(), max_width))
+        .collect::<String>();
 
-    let max_width = get_max_width(ast.options.iter().map(|arg| arg.as_view()));
+    let max_width = get_max_width(ast.options.iter().map(ArgOption::as_view));
     let options_help = ast
         .options
         .iter()
-        .map(|arg| to_help(arg.as_view(), max_width));
+        .map(|arg| to_help(arg.as_view(), max_width))
+        .collect::<String>();
 
-    let positional_header = match ast.positional.as_ref() {
-        Some(opt) => vec![format!(" [{}...]", opt.name)],
-        None => vec![],
-    };
-    let positional_help = match ast.positional.as_ref() {
-        Some(opt) => vec![format!("\n{}:\n  ", opt.name), opt.doc.join("\n  ")],
-        None => vec![],
-    };
+    let positional_header = ast
+        .positional
+        .as_ref()
+        .map(|opt| format!(" [{}...]", opt.name))
+        .unwrap_or_default();
+    let positional_help = ast
+        .positional
+        .as_ref()
+        .map(|opt| format!("\n{}:\n  {}", opt.name, opt.doc.join("\n  ")))
+        .unwrap_or_default();
 
     // Produce variables for argument parser state.
-    let flags_vars = flags.iter().filter_map(|flag| {
-        flag.output.then(|| {
-            let name = &flag.name;
-            quote! { let mut #name = false; }
+    let flags_vars = flags
+        .iter()
+        .filter_map(|flag| {
+            flag.output.then(|| {
+                let name = &flag.name;
+                format!("let mut {name} = false;")
+            })
         })
-    });
-    let options_vars = ast.options.iter().map(|opt| {
-        let name = &opt.name;
-        if let Some(default) = opt.default.as_ref() {
-            quote! { let mut #name = #default; }
-        } else {
-            quote! { let mut #name = None; }
-        }
-    });
-    let positional_var = match ast.positional.as_ref() {
-        Some(opt) => {
+        .collect::<String>();
+    let options_vars = ast
+        .options
+        .iter()
+        .map(|opt| {
             let name = &opt.name;
-            vec![quote! { let mut #name = vec![]; }]
-        }
-        None => vec![],
-    };
+            if let Some(default) = opt.default.as_ref() {
+                format!("let mut {name} = {default};")
+            } else {
+                format!("let mut {name} = None;")
+            }
+        })
+        .collect::<String>();
+    let positional_var = ast
+        .positional
+        .as_ref()
+        .map(|opt| {
+            let name = &opt.name;
+            format!("let mut {name} = vec![];")
+        })
+        .unwrap_or_default();
 
     // Produce matchers for parser.
-    let flags_matchers = flags.iter().filter_map(|flag| {
-        flag.output.then(|| {
-            let name = &flag.name;
-            let short = flag.short.map(|ch| {
-                let arg = format!("-{ch}");
-                quote! { | Some(#arg) }
-            });
-            let arg = format!("--{}", to_arg_name(name));
+    let flags_matchers = flags
+        .iter()
+        .filter_map(|flag| {
+            flag.output.then(|| {
+                let name = &flag.name;
+                let short = flag
+                    .short
+                    .map(|ch| {
+                        let arg = format!("-{ch}");
+                        format!("| Some({arg:?})")
+                    })
+                    .unwrap_or_default();
+                let arg = format!("--{}", to_arg_name(name));
 
-            quote! {
-                Some(#arg) #short => #name = true,
-            }
+                format!("Some({arg:?}) {short} => {name} = true,")
+            })
         })
-    });
-    let options_matchers = ast.options.iter().map(|opt| {
-        let name = &opt.name;
-        let short = opt.short.map(|ch| {
-            let arg = format!("-{ch}");
-            quote! { | Some(name @ #arg) }
-        });
-        let arg = format!("--{}", to_arg_name(name));
-        let value = if opt.default.is_some() {
-            match opt.ty_help {
-                ArgType::Bool => unreachable!(),
-                ArgType::Number => quote! { args.next().parse_int(name)? },
-                ArgType::OsString => quote! { args.next().parse_osstr(name)? },
-                ArgType::Path => quote! { args.next().parse_path(name)? },
-                ArgType::String => quote! { args.next().parse_str(name)? },
-            }
-        } else {
-            match opt.ty_help {
-                ArgType::Bool => unreachable!(),
-                ArgType::Number => quote! { Some(args.next().parse_int(name)?) },
-                ArgType::OsString => quote! { Some(args.next().parse_osstr(name)?) },
-                ArgType::Path => quote! { Some(args.next().parse_path(name)?) },
-                ArgType::String => quote! { Some(args.next().parse_str(name)?) },
-            }
-        };
+        .collect::<String>();
+    let options_matchers = ast
+        .options
+        .iter()
+        .map(|opt| {
+            let name = &opt.name;
+            let short = opt
+                .short
+                .map(|ch| {
+                    let arg = format!("-{ch}");
+                    format!("| Some(name @ {arg:?})")
+                })
+                .unwrap_or_default();
+            let arg = format!("--{}", to_arg_name(name));
+            let value = if opt.default.is_some() {
+                match opt.ty_help {
+                    ArgType::Number => "args.next().parse_int(name)?",
+                    ArgType::OsString => "args.next().parse_osstr(name)?",
+                    ArgType::Path => "args.next().parse_path(name)?",
+                    ArgType::String => "args.next().parse_str(name)?",
+                }
+            } else {
+                match opt.ty_help {
+                    ArgType::Number => "Some(args.next().parse_int(name)?)",
+                    ArgType::OsString => "Some(args.next().parse_osstr(name)?)",
+                    ArgType::Path => "Some(args.next().parse_path(name)?)",
+                    ArgType::String => "Some(args.next().parse_str(name)?)",
+                }
+            };
 
-        quote! {
-            Some(name @ #arg) #short => #name = #value,
-        }
-    });
+            format!("Some(name @ {arg:?}) {short} => {name} = {value},")
+        })
+        .collect::<String>();
     let positional_matcher = match ast.positional.as_ref() {
         Some(opt) => {
             let name = &opt.name;
             let value = match opt.ty_help {
-                ArgType::Bool => unreachable!(),
-                ArgType::Number => quote! { arg.parse_int("<POSITIONAL>")? },
-                ArgType::OsString => quote! { arg.parse_osstr("<POSITIONAL>")? },
-                ArgType::Path => quote! { arg.parse_path("<POSITIONAL>")? },
-                ArgType::String => quote! { arg.parse_str("<POSITIONAL>")? },
+                ArgType::Number => r#"arg.parse_int("<POSITIONAL>")?"#,
+                ArgType::OsString => r#"arg.parse_osstr("<POSITIONAL>")?"#,
+                ArgType::Path => r#"arg.parse_path("<POSITIONAL>")?"#,
+                ArgType::String => r#"arg.parse_str("<POSITIONAL>")?"#,
             };
 
-            vec![quote! {
-                Some("--") => {
-                    for arg in args {
-                        #name.push(#value);
-                    }
-                    break;
-                }
-                Some(_) => #name.push(#value),
-            }]
+            format!(
+                r#"
+                    Some("--") => {{
+                        for arg in args {{
+                            {name}.push({value});
+                        }}
+                        break;
+                    }}
+                    _ => {name}.push({value}),
+                "#
+            )
         }
-        None => vec![quote! { Some("--") => break, }],
+        None => r#"
+            Some("--") => break,
+            _ => return Err(::onlyargs::CliError::Unknown(arg)),
+        "#
+        .to_string(),
     };
 
     // Produce identifiers for args constructor.
     let flags_idents = flags
         .iter()
-        .filter_map(|flag| flag.output.then_some(&flag.name));
-    let options_idents = ast.options.iter().map(|opt| {
-        let name = &opt.name;
-        let arg = format!("--{}", to_arg_name(name));
-        if opt.default.is_some() || opt.optional {
-            quote! { #name }
-        } else {
-            quote! { #name: #name.required(#arg)? }
-        }
-    });
-    let positional_ident = match ast.positional.as_ref() {
-        Some(opt) => vec![&opt.name],
-        None => vec![],
-    };
+        .filter_map(|flag| flag.output.then_some(format!("{},", flag.name)))
+        .collect::<String>();
+    let options_idents = ast
+        .options
+        .iter()
+        .map(|opt| {
+            let name = &opt.name;
+            let arg = format!("--{}", to_arg_name(name));
+            if opt.default.is_some() || opt.optional {
+                format!("{name},")
+            } else {
+                format!("{name}: {name}.required({arg:?})?,")
+            }
+        })
+        .collect::<String>();
+    let positional_ident = ast
+        .positional
+        .map(|opt| format!("{},", opt.name))
+        .unwrap_or_default();
 
     let name = ast.name;
     let doc_comment = format!("\n{}\n", ast.doc.join("\n"));
 
     // Produce final code.
-    let code = quote! {
-        impl ::onlyargs::OnlyArgs for #name {
-            const HELP: &'static str = concat!(
-                env!("CARGO_PKG_NAME"),
-                " v",
-                env!("CARGO_PKG_VERSION"),
-                "\n",
-                env!("CARGO_PKG_DESCRIPTION"),
-                "\n",
-                #doc_comment,
-                "\nUsage:\n  ",
-                env!("CARGO_BIN_NAME"),
-                " [flags] [options]",
-                #(#positional_header,)*
-                "\n\nFlags:\n",
-                #(#flags_help,)*
-                "\nOptions:\n",
-                #(#options_help,)*
-                #(#positional_help,)*
-                "\n",
-            );
+    let code = TokenStream::from_str(&format!(
+        r#"
+            impl ::onlyargs::OnlyArgs for {name} {{
+                const HELP: &'static str = concat!(
+                    env!("CARGO_PKG_NAME"),
+                    " v",
+                    env!("CARGO_PKG_VERSION"),
+                    "\n",
+                    env!("CARGO_PKG_DESCRIPTION"),
+                    "\n",
+                    {doc_comment:?},
+                    "\nUsage:\n  ",
+                    env!("CARGO_BIN_NAME"),
+                    " [flags] [options]",
+                    {positional_header:?},
+                    "\n\nFlags:\n",
+                    {flags_help:?},
+                    "\nOptions:\n",
+                    {options_help:?},
+                    {positional_help:?},
+                    "\n",
+                );
 
-            fn parse(args: Vec<std::ffi::OsString>) -> Result<Self, ::onlyargs::CliError> {
-                use ::onlyargs::extensions::*;
+                fn parse(args: Vec<std::ffi::OsString>) -> Result<Self, ::onlyargs::CliError> {{
+                    use ::onlyargs::extensions::*;
 
-                #(#flags_vars)*
-                #(#options_vars)*
-                #(#positional_var)*
+                    {flags_vars}
+                    {options_vars}
+                    {positional_var}
 
-                let mut args = args.into_iter();
-                while let Some(arg) = args.next() {
-                    match arg.to_str() {
-                        // TODO: Add an attribute to disable help/version.
-                        Some("--help") | Some("-h") => Self::help(),
-                        Some("--version") | Some("-V") => Self::version(),
-                        #(#flags_matchers)*
-                        #(#options_matchers)*
-                        #(#positional_matcher)*
-                        _ => return Err(::onlyargs::CliError::Unknown(arg)),
-                    }
-                }
+                    let mut args = args.into_iter();
+                    while let Some(arg) = args.next() {{
+                        match arg.to_str() {{
+                            // TODO: Add an attribute to disable help/version.
+                            Some("--help") | Some("-h") => Self::help(),
+                            Some("--version") | Some("-V") => Self::version(),
+                            {flags_matchers}
+                            {options_matchers}
+                            {positional_matcher}
+                        }}
+                    }}
 
-                Ok(Self {
-                    #(#flags_idents,)*
-                    #(#options_idents,)*
-                    #(#positional_ident,)*
-                })
-            }
-        }
-    };
+                    Ok(Self {{
+                        {flags_idents}
+                        {options_idents}
+                        {positional_ident}
+                    }})
+                }}
+            }}
+        "#
+    ));
 
-    code.into()
+    match code {
+        Ok(stream) => stream,
+        Err(err) => spanned_error(err.to_string(), Span::call_site()),
+    }
 }
 
 // 1 hyphen + 1 char + 1 trailing space.
@@ -308,13 +349,16 @@ fn to_arg_name(ident: &Ident) -> String {
     name
 }
 
-fn to_help(arg: ArgView, max_width: usize) -> String {
-    let name = to_arg_name(arg.name);
-    let ty = arg.ty_help.as_str();
+fn to_help(view: ArgView, max_width: usize) -> String {
+    let name = to_arg_name(view.name);
+    let ty = match view.ty_help.as_ref() {
+        Some(ty_help) => ty_help.as_str(),
+        None => "",
+    };
     let pad = " ".repeat(max_width + LONG_PAD);
-    let help = arg.doc.join(&format!("\n{pad}"));
+    let help = view.doc.join(&format!("\n{pad}"));
 
-    if let Some(ch) = arg.short {
+    if let Some(ch) = view.short {
         let width = max_width - SHORT_PAD - name.len();
 
         format!("  -{ch} --{name}{ty:<width$}  {help}\n")
@@ -329,18 +373,22 @@ where
 {
     iter.fold(0, |acc, view| {
         let short = view.short.map(|_| SHORT_PAD).unwrap_or_default();
+        let ty = match view.ty_help.as_ref() {
+            Some(ty_help) => ty_help.as_str(),
+            None => "",
+        };
 
-        acc.max(view.name.to_string().len() + view.ty_help.as_str().len() + short)
+        acc.max(view.name.to_string().len() + ty.len() + short)
     })
 }
 
-fn dedupe<'a>(dupes: &mut HashMap<char, &'a Ident>, arg: ArgView<'a>) -> syn::Result<()> {
+fn dedupe<'a>(dupes: &mut HashMap<char, &'a Ident>, arg: ArgView<'a>) -> Result<(), TokenStream> {
     if let Some(ch) = arg.short {
         if let Some(other) = dupes.get(&ch) {
             let msg =
                 format!("Only one short arg is allowed. `-{ch}` also used on field `{other}`");
 
-            return Err(syn::parse::Error::new(arg.name.span(), msg));
+            return Err(spanned_error(msg, arg.name.span()));
         }
 
         dupes.insert(ch, arg.name);

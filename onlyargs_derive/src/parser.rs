@@ -1,6 +1,5 @@
-use quote::ToTokens;
-use syn::parse::{discouraged::Speculative as _, Parse, ParseStream};
-use syn::{braced, parse_quote, Attribute, Expr, ExprLit, Ident, Lit, Path, Token, Visibility};
+use myn::prelude::*;
+use proc_macro::{Delimiter, Ident, Literal, TokenStream};
 
 #[derive(Debug)]
 pub(crate) struct ArgumentStruct {
@@ -31,43 +30,37 @@ pub(crate) struct ArgOption {
     pub(crate) short: Option<char>,
     pub(crate) ty_help: ArgType,
     pub(crate) doc: Vec<String>,
-    pub(crate) default: Option<Lit>,
+    pub(crate) default: Option<Literal>,
     pub(crate) optional: bool,
     pub(crate) positional: bool,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub(crate) struct ArgView<'a> {
     pub(crate) name: &'a Ident,
     pub(crate) short: Option<char>,
-    pub(crate) ty_help: ArgType,
+    pub(crate) ty_help: Option<ArgType>,
     pub(crate) doc: &'a [String],
 }
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum ArgType {
-    Bool,
     Number,
     OsString,
     Path,
     String,
 }
 
-impl Parse for ArgumentStruct {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let attrs = Attribute::parse_outer(input)?;
-        input.parse::<Visibility>()?;
-        input.parse::<Token![struct]>()?;
+impl ArgumentStruct {
+    pub(crate) fn parse(input: TokenStream) -> Result<Self, TokenStream> {
+        let mut input = input.into_token_iter();
+        let attrs = input.parse_attributes()?;
+        input.parse_visibility()?;
+        input.expect_ident("struct")?;
 
-        let name = input.parse()?;
-
-        let content;
-        braced!(content in input);
-        let fields = content
-            .parse_terminated(Argument::parse, Token![,])?
-            .into_pairs()
-            .map(|pair| pair.into_value())
-            .collect::<Vec<_>>();
+        let name = input.as_ident()?;
+        let content = input.expect_group(Delimiter::Brace)?;
+        let fields = Argument::parse(content)?;
 
         let mut flags = vec![];
         let mut options = vec![];
@@ -79,7 +72,10 @@ impl Parse for ArgumentStruct {
                 Argument::Option(opt) => match (opt.positional, &positional) {
                     (true, None) => positional = Some(opt),
                     (true, Some(_)) => {
-                        return Err(input.error("Positional arguments can only be specified once."));
+                        return Err(spanned_error(
+                            "Positional arguments can only be specified once.",
+                            opt.name.span(),
+                        ));
                     }
                     _ => options.push(opt),
                 },
@@ -88,287 +84,261 @@ impl Parse for ArgumentStruct {
 
         let doc = get_doc_comment(&attrs);
 
-        Ok(Self {
-            name,
-            flags,
-            options,
-            positional,
-            doc,
-        })
-    }
-}
-
-impl Parse for Argument {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let attrs = Attribute::parse_outer(input)?;
-
-        // Parse attributes
-        let mut default = None;
-        let mut long = false;
-        let mut short = None;
-        for attr in &attrs {
-            if attr.path().is_ident("default") {
-                default = Some(attr.parse_args()?);
-            } else if attr.path().is_ident("long") {
-                long = true;
-            } else if attr.path().is_ident("short") {
-                let ch: Lit = attr.parse_args()?;
-                if let Lit::Char(ch) = ch {
-                    short = Some(ch.value());
-                }
-            }
-        }
-
-        input.parse::<Visibility>()?;
-
-        let fork = input.fork();
-        if let Ok(mut flag) = fork.parse::<ArgFlag>() {
-            input.advance_to(&fork);
-
-            // Patch flag with attributes
-            flag.doc = get_doc_comment(&attrs);
-
-            if long {
-                flag.short = None;
-            } else if short.is_some() {
-                flag.short = short;
-            }
-
-            Ok(Self::Flag(flag))
-        } else if let Ok(mut opt) = input.parse::<ArgOption>() {
-            opt.doc = get_doc_comment(&attrs);
-
-            opt.default = default;
-            if let Some(default) = opt.default.as_ref() {
-                opt.optional = false;
-                let default = default.to_token_stream().to_string();
-                if let Some(line) = opt.doc.last_mut() {
-                    line.push_str(&format!(" [default: {}]", default));
-                } else {
-                    opt.doc.push(format!("[default: {}]", default));
-                }
-            } else if !opt.optional {
-                if let Some(line) = opt.doc.last_mut() {
-                    line.push_str(" [required]");
-                } else {
-                    opt.doc.push("[required]".to_string());
-                }
-            }
-
-            if long {
-                opt.short = None;
-            } else if short.is_some() {
-                opt.short = short;
-            }
-
-            Ok(Self::Option(opt))
-        } else {
-            Err(input.error("Expected a type suitable for CLI arguments"))
-        }
-    }
-}
-
-impl Parse for ArgFlag {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let name: Ident = input.parse()?;
-        input.parse::<Token![:]>()?;
-
-        // Any of the supported types
-        let ty: Path = input.parse()?;
-
-        if ty == parse_quote!(bool) {
-            // TODO: Add an attribute to disable short names
-            let short = name.to_string().chars().find(|ch| ch.is_ascii_alphabetic());
-
-            Ok(ArgFlag {
+        match input.next() {
+            None => Ok(Self {
                 name,
-                short,
-                doc: vec![],
-                output: true,
-            })
-        } else {
-            Err(input.error("Expected a bool"))
+                flags,
+                options,
+                positional,
+                doc,
+            }),
+            tree => Err(spanned_error("Unexpected token", tree.as_span())),
         }
     }
 }
 
-impl Parse for ArgOption {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let name: Ident = input.parse()?;
-        input.parse::<Token![:]>()?;
+impl Argument {
+    fn parse(mut input: TokenIter) -> Result<Vec<Self>, TokenStream> {
+        let mut args = vec![];
 
-        // Any of the supported types
-        let ty: Path = input.parse()?;
+        while input.peek().is_some() {
+            let attrs = input.parse_attributes()?;
 
-        // We have to check multiple possible paths for types that are not included in
-        // `std::prelude`. The type system is not available here, so we need to make some educated
-        // guesses about field types.
-        let required_paths = [
-            parse_quote!(::std::path::PathBuf),
-            parse_quote!(std::path::PathBuf),
-            parse_quote!(path::PathBuf),
-            parse_quote!(PathBuf),
-        ];
-        let required_os_strings = [
-            parse_quote!(::std::ffi::OsString),
-            parse_quote!(std::ffi::OsString),
-            parse_quote!(ffi::OsString),
-            parse_quote!(OsString),
-        ];
-        let required_numbers = [
-            parse_quote!(f32),
-            parse_quote!(f64),
-            parse_quote!(i8),
-            parse_quote!(i16),
-            parse_quote!(i32),
-            parse_quote!(i64),
-            parse_quote!(i128),
-            parse_quote!(isize),
-            parse_quote!(u8),
-            parse_quote!(u16),
-            parse_quote!(u32),
-            parse_quote!(u64),
-            parse_quote!(u128),
-            parse_quote!(usize),
-        ];
-        let positional_paths = [
-            parse_quote!(Vec<::std::path::PathBuf>),
-            parse_quote!(Vec<std::path::PathBuf>),
-            parse_quote!(Vec<path::PathBuf>),
-            parse_quote!(Vec<PathBuf>),
-        ];
-        let positional_os_strings = [
-            parse_quote!(Vec<::std::ffi::OsString>),
-            parse_quote!(Vec<std::ffi::OsString>),
-            parse_quote!(Vec<ffi::OsString>),
-            parse_quote!(Vec<OsString>),
-        ];
-        let positional_numbers = [
-            parse_quote!(Vec<f32>),
-            parse_quote!(Vec<f64>),
-            parse_quote!(Vec<i8>),
-            parse_quote!(Vec<i16>),
-            parse_quote!(Vec<i32>),
-            parse_quote!(Vec<i64>),
-            parse_quote!(Vec<i128>),
-            parse_quote!(Vec<isize>),
-            parse_quote!(Vec<u8>),
-            parse_quote!(Vec<u16>),
-            parse_quote!(Vec<u32>),
-            parse_quote!(Vec<u64>),
-            parse_quote!(Vec<u128>),
-            parse_quote!(Vec<usize>),
-        ];
-        let optional_paths = [
-            parse_quote!(Option<::std::path::PathBuf>),
-            parse_quote!(Option<std::path::PathBuf>),
-            parse_quote!(Option<path::PathBuf>),
-            parse_quote!(Option<PathBuf>),
-        ];
-        let optional_os_strings = [
-            parse_quote!(Option<::std::ffi::OsString>),
-            parse_quote!(Option<std::ffi::OsString>),
-            parse_quote!(Option<ffi::OsString>),
-            parse_quote!(Option<OsString>),
-        ];
-        let optional_numbers = [
-            parse_quote!(Option<f32>),
-            parse_quote!(Option<f64>),
-            parse_quote!(Option<i8>),
-            parse_quote!(Option<i16>),
-            parse_quote!(Option<i32>),
-            parse_quote!(Option<i64>),
-            parse_quote!(Option<i128>),
-            parse_quote!(Option<isize>),
-            parse_quote!(Option<u8>),
-            parse_quote!(Option<u16>),
-            parse_quote!(Option<u32>),
-            parse_quote!(Option<u64>),
-            parse_quote!(Option<u128>),
-            parse_quote!(Option<usize>),
-        ];
+            // Parse attributes
+            let doc = get_doc_comment(&attrs);
+            let mut default = None;
+            let mut long = false;
+            let mut short = None;
 
-        let optional = if optional_paths.contains(&ty)
-            || optional_os_strings.contains(&ty)
-            || optional_numbers.contains(&ty)
-            || ty == parse_quote!(Option<String>)
-            || positional_paths.contains(&ty)
-            || positional_os_strings.contains(&ty)
-            || positional_numbers.contains(&ty)
-            || ty == parse_quote!(Vec<String>)
+            for mut attr in attrs {
+                let name = attr.name.to_string();
+                match name.as_str() {
+                    "default" => {
+                        let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
+
+                        default = Some(stream.as_lit()?);
+                    }
+                    "long" => long = true,
+                    "short" => {
+                        let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
+                        let lit = stream.as_lit()?;
+
+                        short = Some(lit.as_char()?);
+                    }
+                    _ => (),
+                }
+            }
+
+            input.parse_visibility()?;
+            let name = input.as_ident()?;
+            input.expect_punct(':')?;
+            let (path, span) = input.parse_path()?;
+            let _ = input.expect_punct(',');
+
+            let short = if long {
+                None
+            } else {
+                short.or_else(|| {
+                    // TODO: Add an attribute to disable short names
+                    name.to_string().chars().find(char::is_ascii_alphabetic)
+                })
+            };
+
+            if path == "bool" {
+                args.push(Self::Flag(ArgFlag::new(name, short, doc)));
+            } else {
+                let mut opt = ArgOption::new(name, short, doc, &path).map_err(|_| {
+                    spanned_error(
+                        "Expected bool, PathBuf, String, OsString, integer, or float",
+                        span,
+                    )
+                })?;
+
+                opt.default = default;
+                if let Some(default) = opt.default.as_ref() {
+                    opt.optional = false;
+                    let default = default.to_string();
+                    if let Some(line) = opt.doc.last_mut() {
+                        line.push_str(&format!(" [default: {default}]"));
+                    } else {
+                        opt.doc.push(format!("[default: {default}]"));
+                    }
+                } else if !opt.optional {
+                    if let Some(line) = opt.doc.last_mut() {
+                        line.push_str(" [required]");
+                    } else {
+                        opt.doc.push("[required]".to_string());
+                    }
+                }
+
+                args.push(Self::Option(opt));
+            }
+        }
+
+        Ok(args)
+    }
+}
+
+impl ArgFlag {
+    fn new(name: Ident, short: Option<char>, doc: Vec<String>) -> Self {
+        ArgFlag {
+            name,
+            short,
+            doc,
+            output: true,
+        }
+    }
+
+    pub(crate) fn as_view(&self) -> ArgView {
+        ArgView {
+            name: &self.name,
+            short: self.short,
+            ty_help: None,
+            doc: &self.doc,
+        }
+    }
+}
+
+// We have to check multiple possible paths for types that are not included in
+// `std::prelude`. The type system is not available here, so we need to make some educated
+// guesses about field types.
+const REQUIRED_PATHS: [&str; 4] = [
+    "::std::path::PathBuf",
+    "std::path::PathBuf",
+    "path::PathBuf",
+    "PathBuf",
+];
+const REQUIRED_OS_STRINGS: [&str; 4] = [
+    "::std::ffi::OsString",
+    "std::ffi::OsString",
+    "ffi::OsString",
+    "OsString",
+];
+const REQUIRED_NUMBERS: [&str; 14] = [
+    "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128",
+    "usize",
+];
+const POSITIONAL_PATHS: [&str; 4] = [
+    "Vec<::std::path::PathBuf>",
+    "Vec<std::path::PathBuf>",
+    "Vec<path::PathBuf>",
+    "Vec<PathBuf>",
+];
+const POSITIONAL_OS_STRINGS: [&str; 4] = [
+    "Vec<::std::ffi::OsString>",
+    "Vec<std::ffi::OsString>",
+    "Vec<ffi::OsString>",
+    "Vec<OsString>",
+];
+const POSITIONAL_NUMBERS: [&str; 14] = [
+    "Vec<f32>",
+    "Vec<f64>",
+    "Vec<i8>",
+    "Vec<i16>",
+    "Vec<i32>",
+    "Vec<i64>",
+    "Vec<i128>",
+    "Vec<isize>",
+    "Vec<u8>",
+    "Vec<u16>",
+    "Vec<u32>",
+    "Vec<u64>",
+    "Vec<u128>",
+    "Vec<usize>",
+];
+const OPTIONAL_PATHS: [&str; 4] = [
+    "Option<::std::path::PathBuf>",
+    "Option<std::path::PathBuf>",
+    "Option<path::PathBuf>",
+    "Option<PathBuf>",
+];
+const OPTIONAL_OS_STRINGS: [&str; 4] = [
+    "Option<::std::ffi::OsString>",
+    "Option<std::ffi::OsString>",
+    "Option<ffi::OsString>",
+    "Option<OsString>",
+];
+const OPTIONAL_NUMBERS: [&str; 14] = [
+    "Option<f32>",
+    "Option<f64>",
+    "Option<i8>",
+    "Option<i16>",
+    "Option<i32>",
+    "Option<i64>",
+    "Option<i128>",
+    "Option<isize>",
+    "Option<u8>",
+    "Option<u16>",
+    "Option<u32>",
+    "Option<u64>",
+    "Option<u128>",
+    "Option<usize>",
+];
+
+impl ArgOption {
+    fn new(name: Ident, short: Option<char>, doc: Vec<String>, path: &str) -> Result<Self, ()> {
+        let optional = if OPTIONAL_PATHS.contains(&path)
+            || OPTIONAL_OS_STRINGS.contains(&path)
+            || OPTIONAL_NUMBERS.contains(&path)
+            || path == "Option<String>"
+            || POSITIONAL_PATHS.contains(&path)
+            || POSITIONAL_OS_STRINGS.contains(&path)
+            || POSITIONAL_NUMBERS.contains(&path)
+            || path == "Vec<String>"
         {
             true
-        } else if required_paths.contains(&ty)
-            || required_os_strings.contains(&ty)
-            || required_numbers.contains(&ty)
-            || ty == parse_quote!(String)
+        } else if REQUIRED_PATHS.contains(&path)
+            || REQUIRED_OS_STRINGS.contains(&path)
+            || REQUIRED_NUMBERS.contains(&path)
+            || path == "String"
         {
             false
         } else {
-            return Err(input.error("Expected bool, PathBuf, String, OsString, integer or float"));
+            return Err(());
         };
 
-        let ty_help = if optional_paths.contains(&ty)
-            || required_paths.contains(&ty)
-            || positional_paths.contains(&ty)
+        let ty_help = if OPTIONAL_PATHS.contains(&path)
+            || REQUIRED_PATHS.contains(&path)
+            || POSITIONAL_PATHS.contains(&path)
         {
             ArgType::Path
-        } else if optional_os_strings.contains(&ty)
-            || required_os_strings.contains(&ty)
-            || positional_os_strings.contains(&ty)
+        } else if OPTIONAL_OS_STRINGS.contains(&path)
+            || REQUIRED_OS_STRINGS.contains(&path)
+            || POSITIONAL_OS_STRINGS.contains(&path)
         {
             ArgType::OsString
-        } else if ty == parse_quote!(String)
-            || ty == parse_quote!(Vec<String>)
-            || ty == parse_quote!(Option<String>)
-        {
+        } else if path == "String" || path == "Vec<String>" || path == "Option<String>" {
             ArgType::String
-        } else if optional_numbers.contains(&ty)
-            || required_numbers.contains(&ty)
-            || positional_numbers.contains(&ty)
+        } else if OPTIONAL_NUMBERS.contains(&path)
+            || REQUIRED_NUMBERS.contains(&path)
+            || POSITIONAL_NUMBERS.contains(&path)
         {
             ArgType::Number
         } else {
             unreachable!();
         };
 
-        let positional = positional_paths.contains(&ty)
-            || positional_os_strings.contains(&ty)
-            || positional_numbers.contains(&ty)
-            || ty == parse_quote!(Vec<String>);
-
-        // TODO: Add an attribute to disable short names
-        let short = name.to_string().chars().find(|ch| ch.is_ascii_alphabetic());
+        let positional = POSITIONAL_PATHS.contains(&path)
+            || POSITIONAL_OS_STRINGS.contains(&path)
+            || POSITIONAL_NUMBERS.contains(&path)
+            || path == "Vec<String>";
 
         Ok(ArgOption {
             name,
             short,
             ty_help,
-            doc: vec![],
+            doc,
             default: None,
             optional,
             positional,
         })
     }
-}
 
-impl ArgFlag {
     pub(crate) fn as_view(&self) -> ArgView {
         ArgView {
             name: &self.name,
             short: self.short,
-            ty_help: ArgType::Bool,
-            doc: &self.doc,
-        }
-    }
-}
-
-impl ArgOption {
-    pub(crate) fn as_view(&self) -> ArgView {
-        ArgView {
-            name: &self.name,
-            short: self.short,
-            ty_help: self.ty_help,
+            ty_help: Some(self.ty_help),
             doc: &self.doc,
         }
     }
@@ -377,32 +347,9 @@ impl ArgOption {
 impl ArgType {
     pub(crate) fn as_str(&self) -> &str {
         match self {
-            Self::Bool => "",
             Self::Number => " NUMBER",
             Self::OsString | Self::String => " STRING",
             Self::Path => " PATH",
         }
     }
-}
-
-fn get_doc_comment(attrs: &[Attribute]) -> Vec<String> {
-    attrs
-        .iter()
-        .filter_map(|attr| {
-            if attr.path().is_ident("doc") {
-                attr.meta
-                    .require_name_value()
-                    .map(|nv| match &nv.value {
-                        Expr::Lit(ExprLit {
-                            lit: Lit::Str(lit), ..
-                        }) => Some(lit.value().trim().to_string()),
-                        _ => None,
-                    })
-                    .ok()
-                    .flatten()
-            } else {
-                None
-            }
-        })
-        .collect()
 }
