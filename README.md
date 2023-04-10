@@ -24,7 +24,7 @@ The Minimum Supported Rust Version for `onlyargs` will always be made available 
 
 There's an [argument parsing crate for everyone](https://github.com/rosetta-rs/argparse-rosetta-rs). So why write another?
 
-`onlyargs` is an example of extreme minimalism! The only thing it provides is a trait and some utility functions; you're expected to do the actual work to implement it for your CLI argument struct. But don't let that scare you away! The parser implementation in the `full` example (see below) is only around 50 lines! (Most of the file is boilerplate.)
+`onlyargs` is an example of extreme minimalism! The only thing it provides is a trait and some utility functions; you're expected to do the actual work to implement it for your CLI argument struct. But don't let that scare you away! The parser implementation in the [`full` example](./examples/full.rs) is only around 50 lines! (Most of the file is boilerplate.)
 
 The goals of this parser are correctness, fast compile times, and convenience.
 
