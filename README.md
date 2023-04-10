@@ -1,4 +1,9 @@
-# `onlyargs`
+[![Crates.io](https://img.shields.io/crates/v/onlyargs)](https://crates.io/crates/onlyargs "Crates.io version")
+[![Documentation](https://img.shields.io/docsrs/onlyargs)](https://docs.rs/onlyargs "Documentation")
+[![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
+[![GitHub actions](https://img.shields.io/github/actions/workflow/status/parasyte/onlyargs/ci.yml?branch=main)](https://github.com/parasyte/onlyargs/actions "CI")
+[![GitHub activity](https://img.shields.io/github/last-commit/parasyte/onlyargs)](https://github.com/parasyte/onlyargs/commits "Commit activity")
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/parasyte)](https://github.com/sponsors/parasyte "Sponsors")
 
 Only argument parsing! Nothing more.
 

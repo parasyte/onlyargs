@@ -9,6 +9,7 @@ dependencies = [
  "error-iter",
  "onlyargs",
  "onlyargs_derive",
+ "onlyerror",
 ]
 
 [[package]]
@@ -35,4 +36,12 @@ version = "0.1.0"
 dependencies = [
  "myn",
  "onlyargs",
+]
+
+[[package]]
+name = "onlyerror"
+version = "0.1.0"
+source = "git+https://github.com/parasyte/onlyerror.git?rev=a0a24c82f5e6bbb94032ced36e675364abf35932#a0a24c82f5e6bbb94032ced36e675364abf35932"
+dependencies = [
+ "myn",
 ]
