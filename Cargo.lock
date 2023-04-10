@@ -41,7 +41,7 @@ dependencies = [
 [[package]]
 name = "onlyerror"
 version = "0.1.0"
-source = "git+https://github.com/parasyte/onlyerror.git?rev=a0a24c82f5e6bbb94032ced36e675364abf35932#a0a24c82f5e6bbb94032ced36e675364abf35932"
+source = "git+https://github.com/parasyte/onlyerror.git?rev=1d25d230767e91a29040b83dbf4faf689e69a818#1d25d230767e91a29040b83dbf4faf689e69a818"
 dependencies = [
  "myn",
 ]
