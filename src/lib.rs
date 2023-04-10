@@ -9,6 +9,10 @@
 //!
 //! [`onlyargs_derive`]: https://docs.rs/onlyargs_derive
 
+#![forbid(unsafe_code)]
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+
 use std::env;
 use std::ffi::OsString;
 use std::fmt::Display;
@@ -70,6 +74,10 @@ pub trait OnlyArgs {
     /// Construct a type that implements this trait.
     ///
     /// Each argument is provided as an [`OsString`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the command line arguments cannot be parsed to `Self`.
     fn parse(args: Vec<OsString>) -> Result<Self, CliError>
     where
         Self: Sized;
@@ -131,6 +139,10 @@ impl std::error::Error for CliError {
 ///
 /// Given a type that implements [`OnlyArgs`], this function will construct the type from the
 /// current environment.
+///
+/// # Errors
+///
+/// Returns `Err` if arguments from the environment cannot be parsed to `T`.
 ///
 /// # Example
 ///

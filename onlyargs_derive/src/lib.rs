@@ -69,8 +69,9 @@
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
+#![deny(clippy::pedantic)]
 
-use crate::parser::*;
+use crate::parser::{ArgFlag, ArgOption, ArgType, ArgView, ArgumentStruct};
 use myn::utils::spanned_error;
 use proc_macro::{Ident, Span, TokenStream};
 use std::{collections::HashMap, str::FromStr as _};
@@ -78,6 +79,7 @@ use std::{collections::HashMap, str::FromStr as _};
 mod parser;
 
 /// See the [root module documentation](crate) for the DSL specification.
+#[allow(clippy::too_many_lines)]
 #[proc_macro_derive(OnlyArgs, attributes(default, long, short))]
 pub fn derive_parser(input: TokenStream) -> TokenStream {
     let ast = match ArgumentStruct::parse(input) {
@@ -115,20 +117,18 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
     }
 
     // Produce help text for all arguments.
-    let max_width = get_max_width(flags.iter().map(|arg| arg.as_view()));
+    let max_width = get_max_width(flags.iter().map(ArgFlag::as_view));
     let flags_help = flags
         .iter()
         .map(|arg| to_help(arg.as_view(), max_width))
-        .collect::<Vec<_>>()
-        .join("");
+        .collect::<String>();
 
-    let max_width = get_max_width(ast.options.iter().map(|arg| arg.as_view()));
+    let max_width = get_max_width(ast.options.iter().map(ArgOption::as_view));
     let options_help = ast
         .options
         .iter()
         .map(|arg| to_help(arg.as_view(), max_width))
-        .collect::<Vec<_>>()
-        .join("");
+        .collect::<String>();
 
     let positional_header = ast
         .positional
@@ -264,13 +264,12 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
             let name = &opt.name;
             let arg = format!("--{}", to_arg_name(name));
             if opt.default.is_some() || opt.optional {
-                format!("{},", name)
+                format!("{name},")
             } else {
                 format!("{name}: {name}.required({arg:?})?,")
             }
         })
-        .collect::<Vec<_>>()
-        .join("");
+        .collect::<String>();
     let positional_ident = ast
         .positional
         .map(|opt| format!("{},", opt.name))

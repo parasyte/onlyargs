@@ -35,7 +35,7 @@ pub(crate) struct ArgOption {
     pub(crate) positional: bool,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub(crate) struct ArgView<'a> {
     pub(crate) name: &'a Ident,
     pub(crate) short: Option<char>,
@@ -140,12 +140,12 @@ impl Argument {
             } else {
                 short.or_else(|| {
                     // TODO: Add an attribute to disable short names
-                    name.to_string().chars().find(|ch| ch.is_ascii_alphabetic())
+                    name.to_string().chars().find(char::is_ascii_alphabetic)
                 })
             };
 
             if path == "bool" {
-                args.push(Self::Flag(ArgFlag::new(name, short, doc)))
+                args.push(Self::Flag(ArgFlag::new(name, short, doc)));
             } else {
                 let mut opt = ArgOption::new(name, short, doc, &path).map_err(|_| {
                     spanned_error(
@@ -199,97 +199,97 @@ impl ArgFlag {
     }
 }
 
+// We have to check multiple possible paths for types that are not included in
+// `std::prelude`. The type system is not available here, so we need to make some educated
+// guesses about field types.
+const REQUIRED_PATHS: [&str; 4] = [
+    "::std::path::PathBuf",
+    "std::path::PathBuf",
+    "path::PathBuf",
+    "PathBuf",
+];
+const REQUIRED_OS_STRINGS: [&str; 4] = [
+    "::std::ffi::OsString",
+    "std::ffi::OsString",
+    "ffi::OsString",
+    "OsString",
+];
+const REQUIRED_NUMBERS: [&str; 14] = [
+    "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128",
+    "usize",
+];
+const POSITIONAL_PATHS: [&str; 4] = [
+    "Vec<::std::path::PathBuf>",
+    "Vec<std::path::PathBuf>",
+    "Vec<path::PathBuf>",
+    "Vec<PathBuf>",
+];
+const POSITIONAL_OS_STRINGS: [&str; 4] = [
+    "Vec<::std::ffi::OsString>",
+    "Vec<std::ffi::OsString>",
+    "Vec<ffi::OsString>",
+    "Vec<OsString>",
+];
+const POSITIONAL_NUMBERS: [&str; 14] = [
+    "Vec<f32>",
+    "Vec<f64>",
+    "Vec<i8>",
+    "Vec<i16>",
+    "Vec<i32>",
+    "Vec<i64>",
+    "Vec<i128>",
+    "Vec<isize>",
+    "Vec<u8>",
+    "Vec<u16>",
+    "Vec<u32>",
+    "Vec<u64>",
+    "Vec<u128>",
+    "Vec<usize>",
+];
+const OPTIONAL_PATHS: [&str; 4] = [
+    "Option<::std::path::PathBuf>",
+    "Option<std::path::PathBuf>",
+    "Option<path::PathBuf>",
+    "Option<PathBuf>",
+];
+const OPTIONAL_OS_STRINGS: [&str; 4] = [
+    "Option<::std::ffi::OsString>",
+    "Option<std::ffi::OsString>",
+    "Option<ffi::OsString>",
+    "Option<OsString>",
+];
+const OPTIONAL_NUMBERS: [&str; 14] = [
+    "Option<f32>",
+    "Option<f64>",
+    "Option<i8>",
+    "Option<i16>",
+    "Option<i32>",
+    "Option<i64>",
+    "Option<i128>",
+    "Option<isize>",
+    "Option<u8>",
+    "Option<u16>",
+    "Option<u32>",
+    "Option<u64>",
+    "Option<u128>",
+    "Option<usize>",
+];
+
 impl ArgOption {
     fn new(name: Ident, short: Option<char>, doc: Vec<String>, path: &str) -> Result<Self, ()> {
-        // We have to check multiple possible paths for types that are not included in
-        // `std::prelude`. The type system is not available here, so we need to make some educated
-        // guesses about field types.
-        let required_paths = [
-            "::std::path::PathBuf",
-            "std::path::PathBuf",
-            "path::PathBuf",
-            "PathBuf",
-        ];
-        let required_os_strings = [
-            "::std::ffi::OsString",
-            "std::ffi::OsString",
-            "ffi::OsString",
-            "OsString",
-        ];
-        let required_numbers = [
-            "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64",
-            "u128", "usize",
-        ];
-        let positional_paths = [
-            "Vec<::std::path::PathBuf>",
-            "Vec<std::path::PathBuf>",
-            "Vec<path::PathBuf>",
-            "Vec<PathBuf>",
-        ];
-        let positional_os_strings = [
-            "Vec<::std::ffi::OsString>",
-            "Vec<std::ffi::OsString>",
-            "Vec<ffi::OsString>",
-            "Vec<OsString>",
-        ];
-        let positional_numbers = [
-            "Vec<f32>",
-            "Vec<f64>",
-            "Vec<i8>",
-            "Vec<i16>",
-            "Vec<i32>",
-            "Vec<i64>",
-            "Vec<i128>",
-            "Vec<isize>",
-            "Vec<u8>",
-            "Vec<u16>",
-            "Vec<u32>",
-            "Vec<u64>",
-            "Vec<u128>",
-            "Vec<usize>",
-        ];
-        let optional_paths = [
-            "Option<::std::path::PathBuf>",
-            "Option<std::path::PathBuf>",
-            "Option<path::PathBuf>",
-            "Option<PathBuf>",
-        ];
-        let optional_os_strings = [
-            "Option<::std::ffi::OsString>",
-            "Option<std::ffi::OsString>",
-            "Option<ffi::OsString>",
-            "Option<OsString>",
-        ];
-        let optional_numbers = [
-            "Option<f32>",
-            "Option<f64>",
-            "Option<i8>",
-            "Option<i16>",
-            "Option<i32>",
-            "Option<i64>",
-            "Option<i128>",
-            "Option<isize>",
-            "Option<u8>",
-            "Option<u16>",
-            "Option<u32>",
-            "Option<u64>",
-            "Option<u128>",
-            "Option<usize>",
-        ];
-
-        let optional = if optional_paths.contains(&path)
-            || optional_os_strings.contains(&path)
-            || optional_numbers.contains(&path)
+        let optional = if OPTIONAL_PATHS.contains(&path)
+            || OPTIONAL_OS_STRINGS.contains(&path)
+            || OPTIONAL_NUMBERS.contains(&path)
             || path == "Option<String>"
-            || positional_paths.contains(&path)
-            || positional_os_strings.contains(&path)
-            || positional_numbers.contains(&path)
+            || POSITIONAL_PATHS.contains(&path)
+            || POSITIONAL_OS_STRINGS.contains(&path)
+            || POSITIONAL_NUMBERS.contains(&path)
             || path == "Vec<String>"
         {
             true
-        } else if required_paths.contains(&path)
-            || required_os_strings.contains(&path)
-            || required_numbers.contains(&path)
+        } else if REQUIRED_PATHS.contains(&path)
+            || REQUIRED_OS_STRINGS.contains(&path)
+            || REQUIRED_NUMBERS.contains(&path)
             || path == "String"
         {
             false
@@ -297,30 +297,30 @@ impl ArgOption {
             return Err(());
         };
 
-        let ty_help = if optional_paths.contains(&path)
-            || required_paths.contains(&path)
-            || positional_paths.contains(&path)
+        let ty_help = if OPTIONAL_PATHS.contains(&path)
+            || REQUIRED_PATHS.contains(&path)
+            || POSITIONAL_PATHS.contains(&path)
         {
             ArgType::Path
-        } else if optional_os_strings.contains(&path)
-            || required_os_strings.contains(&path)
-            || positional_os_strings.contains(&path)
+        } else if OPTIONAL_OS_STRINGS.contains(&path)
+            || REQUIRED_OS_STRINGS.contains(&path)
+            || POSITIONAL_OS_STRINGS.contains(&path)
         {
             ArgType::OsString
         } else if path == "String" || path == "Vec<String>" || path == "Option<String>" {
             ArgType::String
-        } else if optional_numbers.contains(&path)
-            || required_numbers.contains(&path)
-            || positional_numbers.contains(&path)
+        } else if OPTIONAL_NUMBERS.contains(&path)
+            || REQUIRED_NUMBERS.contains(&path)
+            || POSITIONAL_NUMBERS.contains(&path)
         {
             ArgType::Number
         } else {
             unreachable!();
         };
 
-        let positional = positional_paths.contains(&path)
-            || positional_os_strings.contains(&path)
-            || positional_numbers.contains(&path)
+        let positional = POSITIONAL_PATHS.contains(&path)
+            || POSITIONAL_OS_STRINGS.contains(&path)
+            || POSITIONAL_NUMBERS.contains(&path)
             || path == "Vec<String>";
 
         Ok(ArgOption {
