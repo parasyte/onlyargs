@@ -3,6 +3,7 @@ name = "onlyargs_derive"
 description = "Obsessively tiny argument parsing derive macro"
 version = "0.1.0"
 authors = ["Jay Oster <jay@kodewerx.org>"]
+repository = "https://github.com/parasyte/onlyargs"
 edition = "2021"
 keywords = ["cli", "arg", "argument", "parse", "parser"]
 categories = ["command-line-interface"]
@@ -12,5 +13,5 @@ license = "MIT"
 proc-macro = true
 
 [dependencies]
-myn = { git = "https://github.com/parasyte/myn.git", rev = "c86196dc061a2bea10363c9ed3fb7091a70e3984" }
+myn = "0.1"
 onlyargs = { version = "0.1", path = ".." }

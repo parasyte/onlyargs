@@ -17,7 +17,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fmt::Display;
 
-pub mod extensions;
+pub mod traits;
 
 /// Argument parsing errors.
 #[derive(Debug)]

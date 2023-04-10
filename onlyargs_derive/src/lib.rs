@@ -15,7 +15,7 @@
 //!
 //! # Provided arguments
 //!
-//! `--help` and `--version` arguments are automatically generated. When the parser encounters
+//! `--help|-h` and `--version|-V` arguments are automatically generated. When the parser encounters
 //! either, it will print the help or version message and exit the application with exit code 0.
 //!
 //! # Field attributes
@@ -33,27 +33,27 @@
 //!
 //! Here is the list of supported field "primitive" types:
 //!
-//! | Type          | Description                                      |
-//! |---------------|--------------------------------------------------|
-//! | `bool`        | Defines a flag.                                  |
-//! | `f32|f64`     | Floating point number option.                    |
-//! | `i8|u8`       | 8-bit integer option.                            |
-//! | `i16|u16`     | 16-bit integer option.                           |
-//! | `i32|u32`     | 32-bit integer option.                           |
-//! | `i64|u64`     | 64-bit integer option.                           |
-//! | `i128|u128`   | 128-bit integer option.                          |
-//! | `isize|usize` | Pointer-sized integer option.                    |
-//! | `OsString`    | A string option with platform-specific encoding. |
-//! | `PathBuf`     | A file system path option.                       |
-//! | `String`      | UTF-8 encoded string option.                     |
+//! | Type             | Description                                      |
+//! |------------------|--------------------------------------------------|
+//! | `bool`           | Defines a flag.                                  |
+//! | `f32`\|`f64`     | Floating point number option.                    |
+//! | `i8`\|`u8`       | 8-bit integer option.                            |
+//! | `i16`\|`u16`     | 16-bit integer option.                           |
+//! | `i32`\|`u32`     | 32-bit integer option.                           |
+//! | `i64`\|`u64`     | 64-bit integer option.                           |
+//! | `i128`\|`u128`   | 128-bit integer option.                          |
+//! | `isize`\|`usize` | Pointer-sized integer option.                    |
+//! | `OsString`       | A string option with platform-specific encoding. |
+//! | `PathBuf`        | A file system path option.                       |
+//! | `String`         | UTF-8 encoded string option.                     |
 //!
 //! Additionally, some wrapper and composite types are also available, where the type `T` must be
 //! one of the primitive types listed above.
 //!
-//! | Type          | Description                       |
-//! |---------------|-----------------------------------|
-//! | `Option<T>`   | An optional argument.             |
-//! | `Vec<T>`      | Positional arguments (see below). |
+//! | Type        | Description                       |
+//! |-------------|-----------------------------------|
+//! | `Option<T>` | An optional argument.             |
+//! | `Vec<T>`    | Positional arguments (see below). |
 //!
 //! In argument parsing parlance, "flags" are simple boolean values; the argument does not require
 //! a value. For example, the argument `--help`.
@@ -303,7 +303,7 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                 );
 
                 fn parse(args: Vec<std::ffi::OsString>) -> Result<Self, ::onlyargs::CliError> {{
-                    use ::onlyargs::extensions::*;
+                    use ::onlyargs::traits::*;
 
                     {flags_vars}
                     {options_vars}

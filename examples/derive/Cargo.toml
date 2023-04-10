@@ -9,4 +9,4 @@ publish = false
 error-iter = "0.4"
 onlyargs = { path = "../.." }
 onlyargs_derive = { path = "../../onlyargs_derive" }
-onlyerror = { git = "https://github.com/parasyte/onlyerror.git", rev = "1d25d230767e91a29040b83dbf4faf689e69a818" }
+onlyerror = "0.1"

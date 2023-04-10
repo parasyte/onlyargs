@@ -1,5 +1,5 @@
 use error_iter::ErrorIter as _;
-use onlyargs::{extensions::*, CliError, OnlyArgs};
+use onlyargs::{traits::*, CliError, OnlyArgs};
 use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
 #[derive(Debug)]
