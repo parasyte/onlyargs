@@ -9,7 +9,7 @@ categories = ["command-line-interface"]
 license = "MIT"
 
 [dependencies]
-# No additional runtime dependencies!
+# No dependencies!
 
 [dev-dependencies]
 error-iter = "0.4"

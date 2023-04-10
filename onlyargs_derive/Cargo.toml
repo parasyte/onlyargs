@@ -12,4 +12,5 @@ license = "MIT"
 proc-macro = true
 
 [dependencies]
+myn = { git = "https://github.com/parasyte/myn.git", rev = "c86196dc061a2bea10363c9ed3fb7091a70e3984" }
 onlyargs = { version = "0.1", path = ".." }

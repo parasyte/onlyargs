@@ -71,6 +71,7 @@
 #![deny(clippy::all)]
 
 use crate::parser::*;
+use myn::utils::spanned_error;
 use proc_macro::{Ident, Span, TokenStream};
 use std::{collections::HashMap, str::FromStr as _};
 

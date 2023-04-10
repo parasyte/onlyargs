@@ -1,17 +1,5 @@
-use proc_macro::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
-use std::iter::Peekable;
-
-type TokenIter = Peekable<proc_macro::token_stream::IntoIter>;
-
-trait TokenIterExt {
-    fn iter(self) -> TokenIter;
-}
-
-impl TokenIterExt for TokenStream {
-    fn iter(self) -> TokenIter {
-        self.into_iter().peekable()
-    }
-}
+use myn::prelude::*;
+use proc_macro::{Delimiter, Ident, Literal, TokenStream};
 
 #[derive(Debug)]
 pub(crate) struct ArgumentStruct {
@@ -63,26 +51,15 @@ pub(crate) enum ArgType {
     String,
 }
 
-#[derive(Debug)]
-struct Attribute {
-    name: Ident,
-    stream: TokenStream,
-}
-
-struct Fork {
-    iter: TokenIter,
-    steps: usize,
-}
-
 impl ArgumentStruct {
     pub(crate) fn parse(input: TokenStream) -> Result<Self, TokenStream> {
-        let mut input = input.iter();
-        let attrs = parse_attributes(&mut input)?;
-        parse_visibility(&mut input)?;
-        expect_ident(&mut input, "struct")?;
+        let mut input = input.into_token_iter();
+        let attrs = input.parse_attributes()?;
+        input.parse_visibility()?;
+        input.expect_ident("struct")?;
 
-        let name = parse_ident(&mut input)?;
-        let content = expect_group(&mut input, Delimiter::Brace)?;
+        let name = input.as_ident()?;
+        let content = input.expect_group(Delimiter::Brace)?;
         let fields = Argument::parse(content)?;
 
         let mut flags = vec![];
@@ -115,94 +92,86 @@ impl ArgumentStruct {
                 positional,
                 doc,
             }),
-            tree => Err(spanned_error("Unexpected token", parse_span(tree))),
+            tree => Err(spanned_error("Unexpected token", tree.as_span())),
         }
     }
 }
 
 impl Argument {
-    fn parse(input: TokenStream) -> Result<Vec<Self>, TokenStream> {
-        let mut input = input.iter();
+    fn parse(mut input: TokenIter) -> Result<Vec<Self>, TokenStream> {
         let mut args = vec![];
 
         while input.peek().is_some() {
-            let attrs = parse_attributes(&mut input)?;
+            let attrs = input.parse_attributes()?;
 
             // Parse attributes
+            let doc = get_doc_comment(&attrs);
             let mut default = None;
             let mut long = false;
             let mut short = None;
-            for attr in &attrs {
+
+            for mut attr in attrs {
                 let name = attr.name.to_string();
                 match name.as_str() {
                     "default" => {
-                        let mut stream =
-                            expect_group(&mut attr.stream.clone().iter(), Delimiter::Parenthesis)?
-                                .iter();
+                        let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
 
-                        default = Some(parse_literal(&mut stream)?);
+                        default = Some(stream.as_lit()?);
                     }
                     "long" => long = true,
                     "short" => {
-                        let mut stream =
-                            expect_group(&mut attr.stream.clone().iter(), Delimiter::Parenthesis)?
-                                .iter();
-                        let lit = parse_literal(&mut stream)?;
+                        let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
+                        let lit = stream.as_lit()?;
 
-                        short = Some(parse_char_literal(lit)?);
+                        short = Some(lit.as_char()?);
                     }
                     _ => (),
                 }
             }
 
-            parse_visibility(&mut input)?;
+            input.parse_visibility()?;
+            let name = input.as_ident()?;
+            input.expect_punct(':')?;
+            let (path, span) = input.parse_path()?;
+            let _ = input.expect_punct(',');
 
-            let mut fork = Fork::new(&input);
-            if let Ok(mut flag) = ArgFlag::parse(&mut fork) {
-                input.by_ref().take(fork.steps).for_each(|_| ());
-
-                // Patch flag with attributes
-                flag.doc = get_doc_comment(&attrs);
-
-                if long {
-                    flag.short = None;
-                } else if short.is_some() {
-                    flag.short = short;
-                }
-
-                args.push(Self::Flag(flag))
+            let short = if long {
+                None
             } else {
-                match ArgOption::parse(&mut input) {
-                    Ok(mut opt) => {
-                        opt.doc = get_doc_comment(&attrs);
+                short.or_else(|| {
+                    // TODO: Add an attribute to disable short names
+                    name.to_string().chars().find(|ch| ch.is_ascii_alphabetic())
+                })
+            };
 
-                        opt.default = default;
-                        if let Some(default) = opt.default.as_ref() {
-                            opt.optional = false;
-                            let default = default.to_string();
-                            if let Some(line) = opt.doc.last_mut() {
-                                line.push_str(&format!(" [default: {default}]"));
-                            } else {
-                                opt.doc.push(format!("[default: {default}]"));
-                            }
-                        } else if !opt.optional {
-                            if let Some(line) = opt.doc.last_mut() {
-                                line.push_str(" [required]");
-                            } else {
-                                opt.doc.push("[required]".to_string());
-                            }
-                        }
+            if path == "bool" {
+                args.push(Self::Flag(ArgFlag::new(name, short, doc)))
+            } else {
+                let mut opt = ArgOption::new(name, short, doc, &path).map_err(|_| {
+                    spanned_error(
+                        "Expected bool, PathBuf, String, OsString, integer, or float",
+                        span,
+                    )
+                })?;
 
-                        if long {
-                            opt.short = None;
-                        } else if short.is_some() {
-                            opt.short = short;
-                        }
-
-                        args.push(Self::Option(opt));
+                opt.default = default;
+                if let Some(default) = opt.default.as_ref() {
+                    opt.optional = false;
+                    let default = default.to_string();
+                    if let Some(line) = opt.doc.last_mut() {
+                        line.push_str(&format!(" [default: {default}]"));
+                    } else {
+                        opt.doc.push(format!("[default: {default}]"));
                     }
-                    Err(err) => return Err(err),
+                } else if !opt.optional {
+                    if let Some(line) = opt.doc.last_mut() {
+                        line.push_str(" [required]");
+                    } else {
+                        opt.doc.push("[required]".to_string());
+                    }
                 }
+
+                args.push(Self::Option(opt));
             }
         }
 
@@ -211,28 +180,13 @@ impl Argument {
 }
 
 impl ArgFlag {
-    fn parse(input: &mut Fork) -> Result<Self, TokenStream> {
-        let name = parse_ident(&mut input.iter)?;
-        input.steps += 1;
-        expect_punct(&mut input.iter, ':')?;
-        input.steps += 1;
-
-        expect_ident(&mut input.iter, "bool")?;
-        input.steps += 1;
-
-        if expect_punct(&mut input.iter, ',').is_ok() {
-            input.steps += 1;
-        }
-
-        // TODO: Add an attribute to disable short names
-        let short = name.to_string().chars().find(|ch| ch.is_ascii_alphabetic());
-
-        Ok(ArgFlag {
+    fn new(name: Ident, short: Option<char>, doc: Vec<String>) -> Self {
+        ArgFlag {
             name,
             short,
-            doc: vec![],
+            doc,
             output: true,
-        })
+        }
     }
 
     pub(crate) fn as_view(&self) -> ArgView {
@@ -246,13 +200,7 @@ impl ArgFlag {
 }
 
 impl ArgOption {
-    fn parse(input: &mut TokenIter) -> Result<Self, TokenStream> {
-        let name = parse_ident(input)?;
-        expect_punct(input, ':')?;
-
-        let (path, span) = parse_path(input)?;
-        let path = path.as_str();
-
+    fn new(name: Ident, short: Option<char>, doc: Vec<String>, path: &str) -> Result<Self, ()> {
         // We have to check multiple possible paths for types that are not included in
         // `std::prelude`. The type system is not available here, so we need to make some educated
         // guesses about field types.
@@ -346,10 +294,7 @@ impl ArgOption {
         {
             false
         } else {
-            return Err(spanned_error(
-                "Expected bool, PathBuf, String, OsString, integer or float",
-                span,
-            ));
+            return Err(());
         };
 
         let ty_help = if optional_paths.contains(&path)
@@ -378,14 +323,11 @@ impl ArgOption {
             || positional_numbers.contains(&path)
             || path == "Vec<String>";
 
-        // TODO: Add an attribute to disable short names
-        let short = name.to_string().chars().find(|ch| ch.is_ascii_alphabetic());
-
         Ok(ArgOption {
             name,
             short,
             ty_help,
-            doc: vec![],
+            doc,
             default: None,
             optional,
             positional,
@@ -409,238 +351,5 @@ impl ArgType {
             Self::OsString | Self::String => " STRING",
             Self::Path => " PATH",
         }
-    }
-}
-
-impl Fork {
-    fn new(iter: &TokenIter) -> Self {
-        Self {
-            iter: iter.clone(),
-            steps: 0,
-        }
-    }
-}
-
-pub(crate) fn spanned_error<S: AsRef<str>>(msg: S, span: Span) -> TokenStream {
-    let mut group = Group::new(
-        Delimiter::Parenthesis,
-        TokenTree::from(Literal::string(msg.as_ref())).into(),
-    );
-    group.set_span(span);
-
-    TokenStream::from_iter([
-        TokenTree::Ident(Ident::new("compile_error", span)),
-        TokenTree::Punct(Punct::new('!', Spacing::Alone)),
-        TokenTree::Group(group),
-        TokenTree::Punct(Punct::new(';', Spacing::Alone)),
-    ])
-}
-
-fn get_doc_comment(attrs: &[Attribute]) -> Vec<String> {
-    attrs
-        .iter()
-        .filter_map(|attr| {
-            if attr.name.to_string() == "doc" {
-                let mut stream = attr.stream.clone().iter();
-
-                match stream.next() {
-                    Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => (),
-                    _ => return None,
-                }
-
-                parse_literal(&mut stream)
-                    .and_then(parse_string_literal)
-                    .ok()
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-fn parse_attributes(input: &mut TokenIter) -> Result<Vec<Attribute>, TokenStream> {
-    let mut attrs = vec![];
-
-    loop {
-        match input.peek() {
-            Some(TokenTree::Punct(punct)) if punct.as_char() == '#' => input.next(),
-            _ => break,
-        };
-
-        let mut group = match input.next() {
-            Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Bracket => {
-                group.stream()
-            }
-            tree => return Err(spanned_error("Expected `[`", parse_span(tree))),
-        }
-        .into_iter();
-
-        match group.next() {
-            Some(TokenTree::Ident(ident)) => {
-                attrs.push(Attribute {
-                    name: ident,
-                    stream: TokenStream::from_iter(group),
-                });
-            }
-            tree => return Err(spanned_error("Expected identifier", parse_span(tree))),
-        }
-    }
-
-    Ok(attrs)
-}
-
-fn parse_visibility(input: &mut TokenIter) -> Result<(), TokenStream> {
-    match input.peek() {
-        Some(TokenTree::Ident(ident)) if ident.to_string() == "pub" => input.next(),
-        _ => return Ok(()),
-    };
-
-    match input.peek() {
-        Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Parenthesis => {
-            input.next();
-        }
-        _ => return Ok(()),
-    }
-
-    Ok(())
-}
-
-fn parse_path(input: &mut TokenIter) -> Result<(String, Span), TokenStream> {
-    let mut path = String::new();
-    let mut span = None;
-    let mut nesting = 0;
-
-    for tree in input {
-        match tree {
-            TokenTree::Punct(punct) if punct.as_char() == ',' && nesting == 0 => break,
-            TokenTree::Punct(punct) => {
-                let ch = punct.as_char();
-
-                // Handle nesting with `<...>`
-                if ch == '<' {
-                    nesting += 1;
-                } else if ch == '>' && punct.spacing() == Spacing::Joint {
-                    nesting -= 1;
-                }
-
-                span.get_or_insert_with(|| punct.span());
-                path.push(ch);
-            }
-            TokenTree::Ident(ident) => {
-                span.get_or_insert_with(|| ident.span());
-                path.push_str(&ident.to_string());
-            }
-            tree => return Err(spanned_error("Unexpected token", parse_span(Some(tree)))),
-        }
-    }
-
-    let span = span.ok_or_else(|| spanned_error("Unexpected end of stream", Span::call_site()))?;
-
-    Ok((path, span))
-}
-
-fn expect_group(input: &mut TokenIter, expect: Delimiter) -> Result<TokenStream, TokenStream> {
-    parse_group(input).and_then(|group| {
-        let delim = group.delimiter();
-        if delim == expect {
-            Ok(group.stream())
-        } else {
-            let delim = match delim {
-                Delimiter::Brace => "{",
-                Delimiter::Bracket => "[",
-                Delimiter::None => "delimiter",
-                Delimiter::Parenthesis => "(",
-            };
-
-            Err(spanned_error(format!("Expected `{delim}`"), group.span()))
-        }
-    })
-}
-
-fn expect_ident(input: &mut TokenIter, expect: &str) -> Result<(), TokenStream> {
-    parse_ident(input).and_then(|ident| {
-        if ident.to_string() == expect {
-            Ok(())
-        } else {
-            Err(spanned_error(format!("Expected `{expect}`"), ident.span()))
-        }
-    })
-}
-
-fn expect_punct(input: &mut TokenIter, expect: char) -> Result<(), TokenStream> {
-    parse_punct(input).and_then(|punct| {
-        if punct.as_char() == expect {
-            Ok(())
-        } else {
-            Err(spanned_error(format!("Expected `{expect}`"), punct.span()))
-        }
-    })
-}
-
-fn parse_group(input: &mut TokenIter) -> Result<Group, TokenStream> {
-    match input.next() {
-        Some(TokenTree::Group(group)) => Ok(group),
-        tree => Err(spanned_error("Expected delimiter", parse_span(tree))),
-    }
-}
-
-fn parse_ident(input: &mut TokenIter) -> Result<Ident, TokenStream> {
-    match input.next() {
-        Some(TokenTree::Ident(ident)) => Ok(ident),
-        tree => Err(spanned_error("Expected identifier", parse_span(tree))),
-    }
-}
-
-fn parse_literal(input: &mut TokenIter) -> Result<Literal, TokenStream> {
-    match input.next() {
-        Some(TokenTree::Literal(lit)) => Ok(lit),
-        tree => Err(spanned_error("Expected literal", parse_span(tree))),
-    }
-}
-
-fn parse_punct(input: &mut TokenIter) -> Result<Punct, TokenStream> {
-    match input.next() {
-        Some(TokenTree::Punct(punct)) => Ok(punct),
-        tree => Err(spanned_error("Expected punctuation", parse_span(tree))),
-    }
-}
-
-fn parse_char_literal(lit: Literal) -> Result<char, TokenStream> {
-    let string = format!("{lit}");
-    if string.len() == 3 || !string.starts_with('\'') || !string.ends_with('\'') {
-        Err(spanned_error("Expected char literal", lit.span()))
-    } else {
-        // Strip single quotes.
-        string
-            .chars()
-            .nth(1)
-            .ok_or_else(|| spanned_error("Expected char literal", lit.span()))
-    }
-}
-
-fn parse_string_literal(lit: Literal) -> Result<String, TokenStream> {
-    let string = format!("{lit}");
-    if !string.starts_with('"') || !string.ends_with('"') {
-        Err(spanned_error("Expected string literal", lit.span()))
-    } else {
-        // Strip double quotes and escapes.
-        Ok(string[1..string.len() - 1]
-            .trim()
-            .replace(r#"\""#, r#"""#)
-            .replace(r"\n", "\n")
-            .replace(r"\r", "\r")
-            .replace(r"\t", "\t")
-            .replace(r"\'", "'")
-            .replace(r"\\", r"\"))
-    }
-}
-
-fn parse_span(opt: Option<TokenTree>) -> Span {
-    match opt {
-        Some(TokenTree::Group(group)) => group.span(),
-        Some(TokenTree::Ident(ident)) => ident.span(),
-        Some(TokenTree::Punct(punct)) => punct.span(),
-        Some(TokenTree::Literal(lit)) => lit.span(),
-        None => Span::call_site(),
     }
 }
