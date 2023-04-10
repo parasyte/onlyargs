@@ -53,4 +53,4 @@ The provided examples use the former in both cases: `--argument 123` and `-a 123
 Some("--argument") | Some("-a")
 ```
 
-It is fairly straightforward to derive an implementation with a proc_macro. See [`onlyargs_derive`](./onlyargs_derive) for an example.
+It is fairly straightforward to derive an implementation with a proc_macro. Compare the [`derive-example`](./examples/derive/src/main.rs) to the `full` example.
