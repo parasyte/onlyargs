@@ -47,7 +47,6 @@ jobs:
         uses: baptiste0928/cargo-install@v2
         with:
           crate: cargo-machete
-          locked: true
       - name: Cargo fmt
         run: cargo fmt --all -- --check
       - name: Cargo doc
