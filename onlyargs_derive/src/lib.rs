@@ -413,12 +413,13 @@ fn to_help(view: ArgView, max_width: usize) -> String {
     let pad = " ".repeat(max_width + LONG_PAD);
     let help = view.doc.join(&format!("\n{pad}"));
 
+    let width = max_width - name.len();
     if let Some(ch) = view.short {
-        let width = max_width - SHORT_PAD - name.len();
+        let width = width - SHORT_PAD;
 
         format!("  -{ch} --{name}{ty:<width$}  {help}\n")
     } else {
-        format!("  --{name}{ty:<max_width$}  {help}\n")
+        format!("  --{name}{ty:<width$}  {help}\n")
     }
 }
 
