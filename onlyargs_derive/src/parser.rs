@@ -1,5 +1,5 @@
-use myn::prelude::*;
-use proc_macro::{Delimiter, Ident, Literal, TokenStream};
+use proc_macro2::{Ident, Literal, Span, TokenStream, TokenTree};
+use venial::{Attribute, AttributeValue, Declaration, NamedField, StructFields};
 
 #[derive(Debug)]
 pub(crate) struct ArgumentStruct {
@@ -52,15 +52,27 @@ pub(crate) enum ArgType {
 }
 
 impl ArgumentStruct {
-    pub(crate) fn parse(input: TokenStream) -> Result<Self, TokenStream> {
-        let mut input = input.into_token_iter();
-        let attrs = input.parse_attributes()?;
-        input.parse_visibility()?;
-        input.expect_ident("struct")?;
+    #[allow(clippy::manual_let_else)]
+    pub(crate) fn parse(input: TokenStream) -> Result<Self, venial::Error> {
+        let decl = venial::parse_declaration(input)?;
 
-        let name = input.as_ident()?;
-        let content = input.expect_group(Delimiter::Brace)?;
-        let fields = Argument::parse(content)?;
+        let s = match decl {
+            Declaration::Struct(s) => s,
+            _ => return Err(venial::Error::new("TODO: Invalid decl")),
+        };
+
+        let name = s.name;
+        let mut fields = vec![];
+        match s.fields {
+            StructFields::Named(f) => {
+                for arg in f.fields.items().cloned().map(Argument::parse) {
+                    fields.push(arg?);
+                }
+            }
+            _ => return Err(venial::Error::new("TODO: Invalid struct fields")),
+        }
+
+        // TODO: Validate attributes and merge with argument
 
         let mut flags = vec![];
         let mut options = vec![];
@@ -72,9 +84,9 @@ impl ArgumentStruct {
                 Argument::Option(opt) => match (opt.positional, &positional) {
                     (true, None) => positional = Some(opt),
                     (true, Some(_)) => {
-                        return Err(spanned_error(
-                            "Positional arguments can only be specified once.",
+                        return Err(venial::Error::new_at_span(
                             opt.name.span(),
+                            "Positional arguments can only be specified once.",
                         ));
                     }
                     _ => options.push(opt),
@@ -82,100 +94,131 @@ impl ArgumentStruct {
             }
         }
 
-        let doc = get_doc_comment(&attrs);
+        let doc = get_doc_comment(&s.attributes);
 
-        match input.next() {
-            None => Ok(Self {
-                name,
-                flags,
-                options,
-                positional,
-                doc,
-            }),
-            tree => Err(spanned_error("Unexpected token", tree.as_span())),
-        }
+        Ok(Self {
+            name,
+            flags,
+            options,
+            positional,
+            doc,
+        })
     }
 }
 
+fn get_doc_comment(attrs: &[Attribute]) -> Vec<String> {
+    attrs
+        .iter()
+        .map(|a| a.path.iter().map(ToString::to_string).collect::<String>())
+        .collect()
+}
+
 impl Argument {
-    fn parse(mut input: TokenIter) -> Result<Vec<Self>, TokenStream> {
-        let mut args = vec![];
+    fn parse(field: NamedField) -> Result<Self, venial::Error> {
+        // Parse attributes
+        let doc = get_doc_comment(&field.attributes);
+        let mut default = None;
+        let mut long = false;
+        let mut short = None;
 
-        while input.peek().is_some() {
-            let attrs = input.parse_attributes()?;
+        for attr in field.attributes {
+            let name = attr
+                .path
+                .into_iter()
+                .map(|p| p.to_string())
+                .collect::<String>();
 
-            // Parse attributes
-            let doc = get_doc_comment(&attrs);
-            let mut default = None;
-            let mut long = false;
-            let mut short = None;
+            match name.as_str() {
+                "default" => {
+                    // There must be a better way!
+                    let lit = match attr.value {
+                        AttributeValue::Group(_, tree) => {
+                            let tree = tree
+                                .into_iter()
+                                .next()
+                                .ok_or_else(|| venial::Error::new("TODO: Expected TokenTree"))?;
+                            match tree {
+                                proc_macro2::TokenTree::Literal(lit) => lit,
+                                _ => return Err(venial::Error::new("TODO: Expected Literal")),
+                            }
+                        }
+                        _ => return Err(venial::Error::new("TODO: Unexpected value")),
+                    };
 
-            for mut attr in attrs {
-                let name = attr.name.to_string();
-                match name.as_str() {
-                    "default" => {
-                        let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
-
-                        default = Some(stream.as_lit()?);
-                    }
-                    "long" => long = true,
-                    "short" => {
-                        let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
-                        let lit = stream.as_lit()?;
-
-                        short = Some(lit.as_char()?);
-                    }
-                    _ => (),
+                    default = Some(lit);
                 }
-            }
+                "long" => long = true,
+                "short" => {
+                    // There must be a better way!
+                    let lit = match attr.value {
+                        AttributeValue::Group(_, tree) => {
+                            tree.into_iter().map(|t| t.to_string()).collect::<String>()
+                        }
+                        _ => return Err(venial::Error::new("TODO: Unexpected value")),
+                    };
 
-            input.parse_visibility()?;
-            let name = input.as_ident()?;
-            input.expect_punct(':')?;
-            let (path, span) = input.parse_path()?;
-            let _ = input.expect_punct(',');
+                    let ch = lit
+                        .chars()
+                        .nth(1)
+                        .ok_or_else(|| venial::Error::new("TODO: Invalid char"))?;
 
-            let short = if long {
-                None
-            } else {
-                short.or_else(|| {
-                    // TODO: Add an attribute to disable short names
-                    name.to_string().chars().find(char::is_ascii_alphabetic)
-                })
-            };
-
-            if path == "bool" {
-                args.push(Self::Flag(ArgFlag::new(name, short, doc)));
-            } else {
-                let mut opt = ArgOption::new(name, short, doc, &path).map_err(|_| {
-                    spanned_error(
-                        "Expected bool, PathBuf, String, OsString, integer, or float",
-                        span,
-                    )
-                })?;
-
-                opt.default = default;
-                if let Some(default) = opt.default.as_ref() {
-                    opt.optional = false;
-                    let default = default.to_string();
-                    if let Some(line) = opt.doc.last_mut() {
-                        line.push_str(&format!(" [default: {default}]"));
-                    } else {
-                        opt.doc.push(format!("[default: {default}]"));
-                    }
-                } else if !opt.optional {
-                    if let Some(line) = opt.doc.last_mut() {
-                        line.push_str(" [required]");
-                    } else {
-                        opt.doc.push("[required]".to_string());
-                    }
+                    short = Some(ch);
                 }
-
-                args.push(Self::Option(opt));
+                _ => (),
             }
         }
 
-        Ok(args)
+        let name = field.name;
+        let path = field
+            .ty
+            .tokens
+            .iter()
+            .map(ToString::to_string)
+            .collect::<String>();
+        let span = field
+            .ty
+            .tokens
+            .first()
+            .map_or_else(Span::call_site, TokenTree::span);
+
+        let short = if long {
+            None
+        } else {
+            short.or_else(|| {
+                // TODO: Add an attribute to disable short names
+                name.to_string().chars().find(char::is_ascii_alphabetic)
+            })
+        };
+
+        if path == "bool" {
+            Ok(Self::Flag(ArgFlag::new(name, short, doc)))
+        } else {
+            let mut opt = ArgOption::new(name, short, doc, &path).map_err(|_| {
+                venial::Error::new_at_span(
+                    span,
+                    "Expected bool, PathBuf, String, OsString, integer, or float",
+                )
+            })?;
+
+            opt.default = default;
+            if let Some(default) = opt.default.as_ref() {
+                opt.optional = false;
+                let default = default.to_string();
+                if let Some(line) = opt.doc.last_mut() {
+                    line.push_str(&format!(" [default: {default}]"));
+                } else {
+                    opt.doc.push(format!("[default: {default}]"));
+                }
+            } else if !opt.optional {
+                if let Some(line) = opt.doc.last_mut() {
+                    line.push_str(" [required]");
+                } else {
+                    opt.doc.push("[required]".to_string());
+                }
+            }
+
+            Ok(Self::Option(opt))
+        }
     }
 }
 

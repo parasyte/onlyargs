@@ -102,8 +102,8 @@
 #![deny(clippy::pedantic)]
 
 use crate::parser::{ArgFlag, ArgOption, ArgType, ArgView, ArgumentStruct};
-use myn::utils::spanned_error;
-use proc_macro::{Ident, Span, TokenStream};
+use proc_macro::TokenStream;
+use proc_macro2::{Ident, Span};
 use std::{collections::HashMap, str::FromStr as _};
 
 mod parser;
@@ -111,10 +111,10 @@ mod parser;
 /// See the [root module documentation](crate) for the DSL specification.
 #[allow(clippy::too_many_lines)]
 #[proc_macro_derive(OnlyArgs, attributes(default, long, short))]
-pub fn derive_parser(input: TokenStream) -> TokenStream {
-    let ast = match ArgumentStruct::parse(input) {
+pub fn derive_parser(input: proc_macro::TokenStream) -> TokenStream {
+    let ast = match ArgumentStruct::parse(input.into()) {
         Ok(ast) => ast,
-        Err(err) => return err,
+        Err(err) => return err.to_compile_error().into(),
     };
 
     let mut flags = vec![
@@ -137,12 +137,12 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
     let mut dupes = HashMap::new();
     for flag in &flags {
         if let Err(err) = dedupe(&mut dupes, flag.as_view()) {
-            return err;
+            return err.to_compile_error().into();
         }
     }
     for opt in &ast.options {
         if let Err(err) = dedupe(&mut dupes, opt.as_view()) {
-            return err;
+            return err.to_compile_error().into();
         }
     }
 
@@ -388,7 +388,9 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
 
     match code {
         Ok(stream) => stream,
-        Err(err) => spanned_error(err.to_string(), Span::call_site()),
+        Err(err) => venial::Error::new(err.to_string())
+            .to_compile_error()
+            .into(),
     }
 }
 
@@ -438,13 +440,13 @@ where
     })
 }
 
-fn dedupe<'a>(dupes: &mut HashMap<char, &'a Ident>, arg: ArgView<'a>) -> Result<(), TokenStream> {
+fn dedupe<'a>(dupes: &mut HashMap<char, &'a Ident>, arg: ArgView<'a>) -> Result<(), venial::Error> {
     if let Some(ch) = arg.short {
         if let Some(other) = dupes.get(&ch) {
             let msg =
                 format!("Only one short arg is allowed. `-{ch}` also used on field `{other}`");
 
-            return Err(spanned_error(msg, arg.name.span()));
+            return Err(venial::Error::new_at_span(arg.name.span(), msg));
         }
 
         dupes.insert(ch, arg.name);
