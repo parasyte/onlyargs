@@ -12,7 +12,6 @@ Only argument parsing! Nothing more.
 - 100% safe Rust 🦀.
 - Correctness: Paths with invalid UTF-8 work correctly on all platforms.
 - Fast compile times.
-  - See [`myn` benchmark results](https://github.com/parasyte/myn/blob/main/benchmarks.md).
 - Convenience: `#[derive(OnlyArgs)]` on a struct and parse CLI arguments from the environment into it with minimal boilerplate.
 
 ## MSRV Policy
