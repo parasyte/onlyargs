@@ -5,6 +5,7 @@ version = "0.1.2"
 authors = ["Jay Oster <jay@kodewerx.org>"]
 repository = "https://github.com/parasyte/onlyargs"
 edition = "2021"
+rust-version = "1.62.0"
 keywords = ["cli", "arg", "argument", "parse", "parser"]
 categories = ["command-line-interface"]
 license = "MIT"
