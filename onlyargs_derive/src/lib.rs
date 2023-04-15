@@ -210,14 +210,13 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                 let name = &flag.name;
                 let short = flag
                     .short
-                    .map(|ch| {
-                        let arg = format!("-{ch}");
-                        format!("| Some({arg:?})")
-                    })
+                    .map(|ch| format!(r#"| Some("-{ch}")"#))
                     .unwrap_or_default();
-                let arg = format!("--{}", to_arg_name(name));
 
-                format!("Some({arg:?}) {short} => {name} = true,")
+                format!(
+                    r#"Some("--{arg}") {short} => {name} = true,"#,
+                    arg = to_arg_name(name)
+                )
             })
         })
         .collect::<String>();
@@ -228,12 +227,8 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
             let name = &opt.name;
             let short = opt
                 .short
-                .map(|ch| {
-                    let arg = format!("-{ch}");
-                    format!("| Some(name @ {arg:?})")
-                })
+                .map(|ch| format!(r#"| Some(name @ "-{ch}")"#))
                 .unwrap_or_default();
-            let arg = format!("--{}", to_arg_name(name));
             let value = if opt.default.is_some() {
                 match opt.ty_help {
                     ArgType::Number => "args.next().parse_int(name)?",
@@ -250,7 +245,10 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                 }
             };
 
-            format!("Some(name @ {arg:?}) {short} => {name} = {value},")
+            format!(
+                r#"Some(name @ "--{arg}") {short} => {name} = {value},"#,
+                arg = to_arg_name(name)
+            )
         })
         .collect::<String>();
     let positional_matcher = match ast.positional.as_ref() {
@@ -292,11 +290,13 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         .iter()
         .map(|opt| {
             let name = &opt.name;
-            let arg = format!("--{}", to_arg_name(name));
             if opt.default.is_some() || opt.optional {
                 format!("{name},")
             } else {
-                format!("{name}: {name}.required({arg:?})?,")
+                format!(
+                    r#"{name}: {name}.required("--{arg}")?,"#,
+                    arg = to_arg_name(name)
+                )
             }
         })
         .collect::<String>();
