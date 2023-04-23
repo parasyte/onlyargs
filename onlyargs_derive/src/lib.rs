@@ -100,6 +100,7 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
+#![allow(clippy::let_underscore_untyped)]
 
 use crate::parser::{ArgFlag, ArgOption, ArgType, ArgView, ArgumentStruct};
 use myn::utils::spanned_error;
