@@ -3,6 +3,14 @@
 version = 3
 
 [[package]]
+name = "basic"
+version = "0.1.0"
+dependencies = [
+ "error-iter",
+ "onlyargs",
+]
+
+[[package]]
 name = "derive-example"
 version = "0.1.0"
 dependencies = [
@@ -17,6 +25,15 @@ name = "error-iter"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8070547d90d1b98debb6626421d742c897942bbb78f047694a5eb769495eccd6"
+
+[[package]]
+name = "full"
+version = "0.1.0"
+dependencies = [
+ "error-iter",
+ "onlyargs",
+ "onlyerror",
+]
 
 [[package]]
 name = "myn"
