@@ -1,0 +1,12 @@
+[package]
+name = "example-full-derive"
+description = "Example application for onlyargs_derive."
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+error-iter = "0.4"
+onlyargs = { path = "../.." }
+onlyargs_derive = { path = "../../onlyargs_derive" }
+onlyerror = "0.1"

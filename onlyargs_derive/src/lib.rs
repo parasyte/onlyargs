@@ -352,6 +352,14 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                     "\n",
                 );
 
+                /// The application name and version.
+                const VERSION: &'static str = concat!(
+                    env!("CARGO_PKG_NAME"),
+                    " v",
+                    env!("CARGO_PKG_VERSION"),
+                    "\n",
+                );
+
                 {help_impl}
 
                 fn parse(args: Vec<::std::ffi::OsString>) ->

@@ -21,7 +21,7 @@ impl OnlyArgs for Args {
         "\n\n",
         "A basic argument parsing example with `onlyargs`.\n",
         "Sums a list of numbers and writes the result to a file or standard output.\n",
-        "\nUsage:\n  cargo run --example full -- [flags] [options] [numbers...]\n",
+        "\nUsage:\n  cargo run -p example-full -- [flags] [options] [numbers...]\n",
         "\nFlags:\n",
         "  -h --help     Show this help message.\n",
         "  -V --version  Show the application version.\n",
@@ -33,6 +33,8 @@ impl OnlyArgs for Args {
         "\nNumbers:\n",
         "  A list of numbers to sum.\n",
     );
+
+    const VERSION: &'static str = onlyargs::impl_version!();
 
     fn parse(args: Vec<OsString>) -> Result<Self, CliError> {
         let mut username = None;

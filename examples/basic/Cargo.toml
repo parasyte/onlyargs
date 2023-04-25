@@ -1,0 +1,11 @@
+[package]
+name = "example-basic"
+description = "Basic example application for onlyargs."
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+error-iter = "0.4"
+onlyargs = { path = "../.." }
+# onlyerror = "0.1"
