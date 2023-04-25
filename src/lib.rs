@@ -191,3 +191,31 @@ impl std::error::Error for CliError {
 pub fn parse<T: OnlyArgs>() -> Result<T, CliError> {
     T::parse(env::args_os().skip(1).collect())
 }
+
+mod macros {
+    #[macro_export]
+    macro_rules! impl_help {
+        () => {
+            concat!(
+                env!("CARGO_PKG_NAME"),
+                " v",
+                env!("CARGO_PKG_VERSION"),
+                "\n",
+                env!("CARGO_PKG_DESCRIPTION"),
+                "\n",
+            )
+        };
+    }
+
+    #[macro_export]
+    macro_rules! impl_version {
+        () => {
+            concat!(
+                env!("CARGO_PKG_NAME"),
+                " v",
+                env!("CARGO_PKG_VERSION"),
+                "\n",
+            );
+        };
+    }
+}
