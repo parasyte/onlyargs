@@ -193,6 +193,16 @@ pub fn parse<T: OnlyArgs>() -> Result<T, CliError> {
 }
 
 mod macros {
+    /// Creates a generic `HELP` string for [`OnlyArgs`] implementations.
+    ///
+    /// The string will take the following form, filling in details from the package's `Cargo.toml`:
+    ///
+    /// ```text
+    /// {package-name} v{package-version}
+    /// {package-description}
+    /// ```
+    ///
+    /// [`OnlyArgs`]: crate::OnlyArgs
     #[macro_export]
     macro_rules! impl_help {
         () => {
@@ -207,6 +217,15 @@ mod macros {
         };
     }
 
+    /// Creates a generic `VERSION` string for [`OnlyArgs`] implementations.
+    ///
+    /// The string will take the following form, filling in details from the package's `Cargo.toml`:
+    ///
+    /// ```text
+    /// {package-name} v{package-version}
+    /// ```
+    ///
+    /// [`OnlyArgs`]: crate::OnlyArgs
     #[macro_export]
     macro_rules! impl_version {
         () => {
