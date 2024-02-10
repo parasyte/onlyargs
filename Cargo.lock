@@ -3,7 +3,30 @@
 version = 3
 
 [[package]]
-name = "derive-example"
+name = "error-iter"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8070547d90d1b98debb6626421d742c897942bbb78f047694a5eb769495eccd6"
+
+[[package]]
+name = "example-basic"
+version = "0.1.0"
+dependencies = [
+ "error-iter",
+ "onlyargs",
+]
+
+[[package]]
+name = "example-full"
+version = "0.1.0"
+dependencies = [
+ "error-iter",
+ "onlyargs",
+ "onlyerror",
+]
+
+[[package]]
+name = "example-full-derive"
 version = "0.1.0"
 dependencies = [
  "error-iter",
@@ -11,12 +34,6 @@ dependencies = [
  "onlyargs_derive",
  "onlyerror",
 ]
-
-[[package]]
-name = "error-iter"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8070547d90d1b98debb6626421d742c897942bbb78f047694a5eb769495eccd6"
 
 [[package]]
 name = "myn"
