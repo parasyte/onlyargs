@@ -105,7 +105,7 @@
 use crate::parser::{ArgFlag, ArgOption, ArgType, ArgView, ArgumentStruct};
 use myn::utils::spanned_error;
 use proc_macro::{Ident, Span, TokenStream};
-use std::{collections::HashMap, str::FromStr as _};
+use std::{collections::HashMap, fmt::Write as _, str::FromStr as _};
 
 mod parser;
 
@@ -132,7 +132,7 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
             output: false,
         },
     ];
-    flags.extend(ast.flags.into_iter());
+    flags.extend(ast.flags);
 
     // De-dupe short args.
     let mut dupes = HashMap::new();
@@ -173,15 +173,14 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         .unwrap_or_default();
 
     // Produce variables for argument parser state.
-    let flags_vars = flags
-        .iter()
-        .filter_map(|flag| {
-            flag.output.then(|| {
-                let name = &flag.name;
-                format!("let mut {name} = false;")
-            })
-        })
-        .collect::<String>();
+    let flags_vars =
+        flags
+            .iter()
+            .filter(|&flag| flag.output)
+            .fold(String::new(), |mut flags, flag| {
+                write!(flags, "let mut {name} = false;", name = &flag.name).unwrap();
+                flags
+            });
     let options_vars = ast
         .options
         .iter()
@@ -204,54 +203,55 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         .unwrap_or_default();
 
     // Produce matchers for parser.
-    let flags_matchers = flags
-        .iter()
-        .filter_map(|flag| {
-            flag.output.then(|| {
+    let flags_matchers =
+        flags
+            .iter()
+            .filter(|&flag| flag.output)
+            .fold(String::new(), |mut matchers, flag| {
                 let name = &flag.name;
                 let short = flag
                     .short
                     .map(|ch| format!(r#"| Some("-{ch}")"#))
                     .unwrap_or_default();
 
-                format!(
+                write!(
+                    matchers,
                     r#"Some("--{arg}") {short} => {name} = true,"#,
                     arg = to_arg_name(name)
                 )
-            })
-        })
-        .collect::<String>();
-    let options_matchers = ast
-        .options
-        .iter()
-        .map(|opt| {
-            let name = &opt.name;
-            let short = opt
-                .short
-                .map(|ch| format!(r#"| Some(name @ "-{ch}")"#))
-                .unwrap_or_default();
-            let value = if opt.default.is_some() {
-                match opt.ty_help {
-                    ArgType::Number => "args.next().parse_int(name)?",
-                    ArgType::OsString => "args.next().parse_osstr(name)?",
-                    ArgType::Path => "args.next().parse_path(name)?",
-                    ArgType::String => "args.next().parse_str(name)?",
-                }
-            } else {
-                match opt.ty_help {
-                    ArgType::Number => "Some(args.next().parse_int(name)?)",
-                    ArgType::OsString => "Some(args.next().parse_osstr(name)?)",
-                    ArgType::Path => "Some(args.next().parse_path(name)?)",
-                    ArgType::String => "Some(args.next().parse_str(name)?)",
-                }
-            };
+                .unwrap();
+                matchers
+            });
+    let options_matchers = ast.options.iter().fold(String::new(), |mut matchers, opt| {
+        let name = &opt.name;
+        let short = opt
+            .short
+            .map(|ch| format!(r#"| Some(name @ "-{ch}")"#))
+            .unwrap_or_default();
+        let value = if opt.default.is_some() {
+            match opt.ty_help {
+                ArgType::Number => "args.next().parse_int(name)?",
+                ArgType::OsString => "args.next().parse_osstr(name)?",
+                ArgType::Path => "args.next().parse_path(name)?",
+                ArgType::String => "args.next().parse_str(name)?",
+            }
+        } else {
+            match opt.ty_help {
+                ArgType::Number => "Some(args.next().parse_int(name)?)",
+                ArgType::OsString => "Some(args.next().parse_osstr(name)?)",
+                ArgType::Path => "Some(args.next().parse_path(name)?)",
+                ArgType::String => "Some(args.next().parse_str(name)?)",
+            }
+        };
 
-            format!(
-                r#"Some(name @ "--{arg}") {short} => {name} = {value},"#,
-                arg = to_arg_name(name)
-            )
-        })
-        .collect::<String>();
+        write!(
+            matchers,
+            r#"Some(name @ "--{arg}") {short} => {name} = {value},"#,
+            arg = to_arg_name(name)
+        )
+        .unwrap();
+        matchers
+    });
     let positional_matcher = match ast.positional.as_ref() {
         Some(opt) => {
             let name = &opt.name;

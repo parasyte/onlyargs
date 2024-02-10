@@ -6,7 +6,7 @@ use error_iter::ErrorIter as _;
 use onlyargs::{CliError, OnlyArgs as _};
 use onlyargs_derive::OnlyArgs;
 use onlyerror::Error;
-use std::{path::PathBuf, process::ExitCode};
+use std::{fmt::Write as _, path::PathBuf, process::ExitCode};
 
 /// A basic argument parsing example with `onlyargs_derive`.
 /// Sums a list of numbers and writes the result to a file or standard output.
@@ -45,11 +45,10 @@ fn run() -> Result<(), Error> {
     println!("The width is {}.", args.width);
 
     // Do some work.
-    let numbers = &args
-        .numbers
-        .iter()
-        .map(|num| format!(" + {num}"))
-        .collect::<String>();
+    let numbers = &args.numbers.iter().fold(String::new(), |mut numbers, num| {
+        write!(numbers, " + {num}").unwrap();
+        numbers
+    });
 
     if let Some(numbers) = numbers.strip_prefix(" + ") {
         let sum: i32 = args.numbers.iter().sum();
