@@ -1,5 +1,6 @@
 use error_iter::ErrorIter as _;
 use onlyargs::{traits::*, CliError, OnlyArgs};
+use onlyerror::Error;
 use std::{ffi::OsString, fmt::Write as _, path::PathBuf, process::ExitCode};
 
 #[derive(Debug)]
@@ -84,40 +85,13 @@ impl OnlyArgs for Args {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 enum Error {
-    Cli(CliError),
-    Io(std::io::Error),
-}
+    /// Argument parsing error.
+    Cli(#[from] CliError),
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Cli(_) => write!(f, "Argument parsing error"),
-            Self::Io(_) => write!(f, "I/O error"),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Cli(err) => Some(err),
-            Self::Io(err) => Some(err),
-        }
-    }
-}
-
-impl From<CliError> for Error {
-    fn from(value: CliError) -> Self {
-        Self::Cli(value)
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(value: std::io::Error) -> Self {
-        Self::Io(value)
-    }
+    /// I/O error.
+    Io(#[from] std::io::Error),
 }
 
 fn run() -> Result<(), Error> {
