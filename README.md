@@ -23,7 +23,7 @@ The Minimum Supported Rust Version for `onlyargs` will always be made available 
 
 There's an [argument parsing crate for everyone](https://github.com/rosetta-rs/argparse-rosetta-rs). So why write another?
 
-`onlyargs` is an example of extreme minimalism! The only thing it provides is a trait and some utility functions; you're expected to do the actual work to implement it for your CLI argument struct. But don't let that scare you away! The parser implementation in the [`full` example](./examples/full.rs) is only around 50 lines! (Most of the file is boilerplate.)
+`onlyargs` is an example of extreme minimalism! The only thing it provides is a trait and some utility functions; you're expected to do the actual work to implement it for your CLI argument struct. But don't let that scare you away! The parser implementation in the ["full" example](./examples/full/src/main.rs) is only around 50 lines! (Most of the file is boilerplate.)
 
 The goals of this parser are correctness, fast compile times, and convenience.
 
@@ -52,4 +52,4 @@ The provided examples use the former in both cases: `--argument 123` and `-a 123
 Some("--argument") | Some("-a")
 ```
 
-It is fairly straightforward to derive an implementation with a proc_macro. Compare the [`derive-example`](./examples/derive/src/main.rs) to the `full` example.
+It is fairly straightforward to derive an implementation with a proc_macro. Compare the ["full-derive" example](./examples/full-derive/src/main.rs) to the "full" example.

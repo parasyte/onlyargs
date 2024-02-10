@@ -8,5 +8,4 @@ publish = false
 [dependencies]
 error-iter = "0.4"
 onlyargs = { path = "../.." }
-# onlyargs_derive = { path = "../../onlyargs_dcerive" }
 onlyerror = "0.1"
