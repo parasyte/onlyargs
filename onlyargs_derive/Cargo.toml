@@ -14,5 +14,5 @@ license = "MIT"
 proc-macro = true
 
 [dependencies]
-myn = "0.1"
+myn = "0.2"
 onlyargs = { version = "0.1", path = ".." }
