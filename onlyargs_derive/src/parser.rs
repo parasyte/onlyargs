@@ -147,7 +147,7 @@ impl Argument {
             if path == "bool" {
                 args.push(Self::Flag(ArgFlag::new(name, short, doc)));
             } else {
-                let mut opt = ArgOption::new(name, short, doc, &path).map_err(|_| {
+                let mut opt = ArgOption::new(name, short, doc, &path).map_err(|()| {
                     spanned_error(
                         "Expected bool, PathBuf, String, OsString, integer, or float",
                         span,

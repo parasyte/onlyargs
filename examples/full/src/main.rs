@@ -1,6 +1,6 @@
 use error_iter::ErrorIter as _;
 use onlyargs::{traits::*, CliError, OnlyArgs};
-use std::{ffi::OsString, path::PathBuf, process::ExitCode};
+use std::{ffi::OsString, fmt::Write as _, path::PathBuf, process::ExitCode};
 
 #[derive(Debug)]
 struct Args {
@@ -127,11 +127,10 @@ fn run() -> Result<(), Error> {
     println!("The width is {}.", args.width);
 
     // Do some work.
-    let numbers = &args
-        .numbers
-        .iter()
-        .map(|num| format!(" + {num}"))
-        .collect::<String>();
+    let numbers = &args.numbers.iter().fold(String::new(), |mut numbers, num| {
+        write!(numbers, " + {num}").unwrap();
+        numbers
+    });
 
     if let Some(numbers) = numbers.strip_prefix(" + ") {
         let sum: i32 = args.numbers.iter().sum();
