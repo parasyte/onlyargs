@@ -155,6 +155,9 @@ impl std::error::Error for CliError {
 /// }
 ///
 /// impl OnlyArgs for Args {
+///     const HELP: &'static str = onlyargs::impl_help!();
+///     const VERSION: &'static str = onlyargs::impl_version!();
+///
 ///     fn parse(args: Vec<OsString>) -> Result<Self, CliError> {
 ///         let mut verbose = false;
 ///
