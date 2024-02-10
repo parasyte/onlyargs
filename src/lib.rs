@@ -155,6 +155,9 @@ impl std::error::Error for CliError {
 /// }
 ///
 /// impl OnlyArgs for Args {
+///     const HELP: &'static str = onlyargs::impl_help!();
+///     const VERSION: &'static str = onlyargs::impl_version!();
+///
 ///     fn parse(args: Vec<OsString>) -> Result<Self, CliError> {
 ///         let mut verbose = false;
 ///
@@ -193,6 +196,16 @@ pub fn parse<T: OnlyArgs>() -> Result<T, CliError> {
 }
 
 mod macros {
+    /// Creates a generic `HELP` string for [`OnlyArgs`] implementations.
+    ///
+    /// The string will take the following form, filling in details from the package's `Cargo.toml`:
+    ///
+    /// ```text
+    /// {package-name} v{package-version}
+    /// {package-description}
+    /// ```
+    ///
+    /// [`OnlyArgs`]: crate::OnlyArgs
     #[macro_export]
     macro_rules! impl_help {
         () => {
@@ -207,6 +220,15 @@ mod macros {
         };
     }
 
+    /// Creates a generic `VERSION` string for [`OnlyArgs`] implementations.
+    ///
+    /// The string will take the following form, filling in details from the package's `Cargo.toml`:
+    ///
+    /// ```text
+    /// {package-name} v{package-version}
+    /// ```
+    ///
+    /// [`OnlyArgs`]: crate::OnlyArgs
     #[macro_export]
     macro_rules! impl_version {
         () => {
