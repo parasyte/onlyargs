@@ -58,7 +58,7 @@ impl ArgumentStruct {
         input.parse_visibility()?;
         input.expect_ident("struct")?;
 
-        let name = input.as_ident()?;
+        let name = input.try_ident()?;
         let content = input.expect_group(Delimiter::Brace)?;
         let fields = Argument::parse(content)?;
 
@@ -82,7 +82,10 @@ impl ArgumentStruct {
             }
         }
 
-        let doc = get_doc_comment(&attrs);
+        let doc = get_doc_comment(&attrs)
+            .into_iter()
+            .map(trim_with_indent)
+            .collect();
 
         match input.next() {
             None => Ok(Self {
@@ -105,7 +108,10 @@ impl Argument {
             let attrs = input.parse_attributes()?;
 
             // Parse attributes
-            let doc = get_doc_comment(&attrs);
+            let doc = get_doc_comment(&attrs)
+                .into_iter()
+                .map(trim_with_indent)
+                .collect();
             let mut default = None;
             let mut long = false;
             let mut short = None;
@@ -116,12 +122,12 @@ impl Argument {
                     "default" => {
                         let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
 
-                        default = Some(stream.as_lit()?);
+                        default = Some(stream.try_lit()?);
                     }
                     "long" => long = true,
                     "short" => {
                         let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
-                        let lit = stream.as_lit()?;
+                        let lit = stream.try_lit()?;
 
                         short = Some(lit.as_char()?);
                     }
@@ -130,7 +136,7 @@ impl Argument {
             }
 
             input.parse_visibility()?;
-            let name = input.as_ident()?;
+            let name = input.try_ident()?;
             input.expect_punct(':')?;
             let (path, span) = input.parse_path()?;
             let _ = input.expect_punct(',');
@@ -352,4 +358,12 @@ impl ArgType {
             Self::Path => " PATH",
         }
     }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn trim_with_indent(line: String) -> String {
+    line.strip_prefix(' ')
+        .unwrap_or(&line)
+        .trim_end()
+        .to_string()
 }
