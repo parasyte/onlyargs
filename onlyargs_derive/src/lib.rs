@@ -9,8 +9,16 @@
 //! use onlyargs_derive::OnlyArgs;
 //!
 //! /// Doc comments will appear in your application's help text.
-//! /// Multi-line comments are also supported.
+//! ///
+//! /// Features:
+//! ///   - Supports multi-line strings.
+//! ///   - Supports indentation.
 //! #[derive(Debug, OnlyArgs)]
+//! #[footer = "Footer attributes will be included at the bottom of the help message."]
+//! #[footer = ""]
+//! #[footer = "Features:"]
+//! #[footer = "  - Also supports multi-line strings."]
+//! #[footer = "  - Also supports indentation."]
 //! struct Args {
 //!     /// Optional output path.
 //!     output: Option<std::path::PathBuf>,
@@ -111,7 +119,7 @@ mod parser;
 
 /// See the [root module documentation](crate) for the DSL specification.
 #[allow(clippy::too_many_lines)]
-#[proc_macro_derive(OnlyArgs, attributes(default, long, short))]
+#[proc_macro_derive(OnlyArgs, attributes(footer, default, long, short))]
 pub fn derive_parser(input: TokenStream) -> TokenStream {
     let ast = match ArgumentStruct::parse(input) {
         Ok(ast) => ast,
@@ -312,6 +320,11 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
     } else {
         format!("\n{}\n", ast.doc.join("\n"))
     };
+    let footer = if ast.footer.is_empty() {
+        String::new()
+    } else {
+        format!("\n{}\n", ast.footer.join("\n"))
+    };
     let bin_name = std::env::var_os("CARGO_BIN_NAME").and_then(|name| name.into_string().ok());
     let help_impl = if bin_name.is_none() {
         r#"fn help() -> ! {
@@ -349,6 +362,8 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                     "\nOptions:\n",
                     {options_help:?},
                     {positional_help:?},
+                    "\n",
+                    {footer:?},
                     "\n",
                 );
 
