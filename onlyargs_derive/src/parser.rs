@@ -8,6 +8,7 @@ pub(crate) struct ArgumentStruct {
     pub(crate) options: Vec<ArgOption>,
     pub(crate) positional: Option<ArgOption>,
     pub(crate) doc: Vec<String>,
+    pub(crate) footer: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -87,6 +88,11 @@ impl ArgumentStruct {
             .map(trim_with_indent)
             .collect();
 
+        let footer = get_attr_strings(&attrs, "footer")
+            .into_iter()
+            .map(|line| line.trim_end().to_string())
+            .collect();
+
         match input.next() {
             None => Ok(Self {
                 name,
@@ -94,6 +100,7 @@ impl ArgumentStruct {
                 options,
                 positional,
                 doc,
+                footer,
             }),
             tree => Err(spanned_error("Unexpected token", tree.as_span())),
         }

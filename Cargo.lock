@@ -37,9 +37,9 @@ dependencies = [
 
 [[package]]
 name = "myn"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "531b2675eec9b104037d42e9045a0ea5c27c8727bdc8e1f55c93bb088f1dec07"
+checksum = "51eb7addae0a5fbc6616160ee79bb7244eb644e2d18becf2f8f03603e06de63a"
 
 [[package]]
 name = "onlyargs"
