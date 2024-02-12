@@ -66,6 +66,9 @@
 //!   will be `-N`.
 //!   - If `#[long]` and `#[short]` are used together, `#[long]` takes precedence.
 //! - `#[default(T)]`: Specify a default value for an argument. Where `T` is a literal value.
+//!   - Accepts string literals for `PathBuf`.
+//!   - Accepts numeric literals for numeric types.
+//!   - Accepts `true` and `false` idents and `"true"` and `"false"` string literals for `boolean`.
 //!
 //! # Supported types
 //!
@@ -127,18 +130,16 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
     };
 
     let mut flags = vec![
-        ArgFlag {
-            name: Ident::new("help", Span::call_site()),
-            short: Some('h'),
-            doc: vec!["Show this help message.".to_string()],
-            output: false,
-        },
-        ArgFlag {
-            name: Ident::new("version", Span::call_site()),
-            short: Some('V'),
-            doc: vec!["Show the application version.".to_string()],
-            output: false,
-        },
+        ArgFlag::new_priv(
+            Ident::new("help", Span::call_site()),
+            Some('h'),
+            vec!["Show this help message.".to_string()],
+        ),
+        ArgFlag::new_priv(
+            Ident::new("version", Span::call_site()),
+            Some('V'),
+            vec!["Show the application version.".to_string()],
+        ),
     ];
     flags.extend(ast.flags);
 
@@ -186,7 +187,13 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
             .iter()
             .filter(|&flag| flag.output)
             .fold(String::new(), |mut flags, flag| {
-                write!(flags, "let mut {name} = false;", name = &flag.name).unwrap();
+                write!(
+                    flags,
+                    "let mut {name} = {default:?};",
+                    name = flag.name,
+                    default = flag.default,
+                )
+                .unwrap();
                 flags
             });
     let options_vars = ast
@@ -195,7 +202,7 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         .map(|opt| {
             let name = &opt.name;
             if let Some(default) = opt.default.as_ref() {
-                format!("let mut {name} = {default};")
+                format!("let mut {name} = {default}.into();")
             } else {
                 format!("let mut {name} = None;")
             }
@@ -367,7 +374,6 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                     "\n",
                 );
 
-                /// The application name and version.
                 const VERSION: &'static str = concat!(
                     env!("CARGO_PKG_NAME"),
                     " v",
