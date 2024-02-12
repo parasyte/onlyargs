@@ -43,14 +43,14 @@ checksum = "51eb7addae0a5fbc6616160ee79bb7244eb644e2d18becf2f8f03603e06de63a"
 
 [[package]]
 name = "onlyargs"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "error-iter",
 ]
 
 [[package]]
 name = "onlyargs_derive"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "myn",
  "onlyargs",
