@@ -33,6 +33,10 @@ impl OnlyArgs for Args {
         "  -w --width NUMBER     Set the width. [default: 42]\n",
         "\nNumbers:\n",
         "  A list of numbers to sum.\n",
+        "\nPlease consider becoming a sponsor 💖:\n",
+        "  * https://github.com/sponsors/parasyte\n",
+        "  * https://ko-fi.com/blipjoy\n",
+        "  * https://patreon.com/blipjoy\n",
     );
 
     const VERSION: &'static str = onlyargs::impl_version!();

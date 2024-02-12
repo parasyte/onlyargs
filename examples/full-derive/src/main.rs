@@ -12,9 +12,9 @@ use std::{fmt::Write as _, path::PathBuf, process::ExitCode};
 /// Sums a list of numbers and writes the result to a file or standard output.
 #[derive(Clone, Debug, Eq, PartialEq, OnlyArgs)]
 #[footer = "Please consider becoming a sponsor 💖:"]
-#[footer = "  - https://github.com/sponsors/parasyte"]
-#[footer = "  - https://ko-fi.com/blipjoy"]
-#[footer = "  - https://patreon.com/blipjoy"]
+#[footer = "  * https://github.com/sponsors/parasyte"]
+#[footer = "  * https://ko-fi.com/blipjoy"]
+#[footer = "  * https://patreon.com/blipjoy"]
 struct Args {
     /// Your username.
     username: String,
