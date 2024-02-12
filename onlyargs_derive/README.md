@@ -21,4 +21,4 @@ The Minimum Supported Rust Version for `onlyargs` will always be made available 
 
 # Examples
 
-See the [`derive-example`](../examples/derive/src/main.rs) for usage.
+See the [`derive-example`](../examples/full-derive/src/main.rs) for usage.
