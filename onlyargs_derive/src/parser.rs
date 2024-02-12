@@ -22,6 +22,7 @@ pub(crate) struct ArgFlag {
     pub(crate) name: Ident,
     pub(crate) short: Option<char>,
     pub(crate) doc: Vec<String>,
+    pub(crate) default: bool,
     pub(crate) output: bool,
 }
 
@@ -129,7 +130,14 @@ impl Argument {
                     "default" => {
                         let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
 
-                        default = Some(stream.try_lit()?);
+                        default = Some(stream.try_lit().or_else(|_| {
+                            stream
+                                .try_ident()
+                                .and_then(|ident| match ident.to_string().as_str() {
+                                    boolean @ ("true" | "false") => Ok(Literal::string(boolean)),
+                                    _ => Err(spanned_error("Unexpected identifier", ident.span())),
+                                })
+                        })?);
                     }
                     "long" => long = true,
                     "short" => {
@@ -158,7 +166,12 @@ impl Argument {
             };
 
             if path == "bool" {
-                args.push(Self::Flag(ArgFlag::new(name, short, doc)));
+                let mut flag = ArgFlag::new(name, short, doc);
+                match default {
+                    Some(lit) if lit.to_string() == r#""true""# => flag.default = true,
+                    _ => (),
+                }
+                args.push(Self::Flag(flag));
             } else {
                 let mut opt = ArgOption::new(name, short, doc, &path).map_err(|()| {
                     spanned_error(
@@ -198,7 +211,18 @@ impl ArgFlag {
             name,
             short,
             doc,
+            default: false,
             output: true,
+        }
+    }
+
+    pub(crate) fn new_priv(name: Ident, short: Option<char>, doc: Vec<String>) -> Self {
+        ArgFlag {
+            name,
+            short,
+            doc,
+            default: false,
+            output: false,
         }
     }
 
