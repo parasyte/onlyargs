@@ -330,7 +330,7 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
     let footer = if ast.footer.is_empty() {
         String::new()
     } else {
-        format!("\n{}\n", ast.footer.join("\n"))
+        format!("\n\n{}\n", ast.footer.join("\n"))
     };
     let bin_name = std::env::var_os("CARGO_BIN_NAME").and_then(|name| name.into_string().ok());
     let help_impl = if bin_name.is_none() {
@@ -369,7 +369,6 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
                     "\nOptions:\n",
                     {options_help:?},
                     {positional_help:?},
-                    "\n",
                     {footer:?},
                     "\n",
                 );
