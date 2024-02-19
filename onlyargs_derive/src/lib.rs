@@ -241,27 +241,27 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         let name = &opt.name;
         let short = opt
             .short
-            .map(|ch| format!(r#"| Some(name @ "-{ch}")"#))
+            .map(|ch| format!(r#"| Some(arg_name_ @ "-{ch}")"#))
             .unwrap_or_default();
         let value = if opt.default.is_some() {
             match opt.ty_help {
-                ArgType::Number => "args.next().parse_int(name)?",
-                ArgType::OsString => "args.next().parse_osstr(name)?",
-                ArgType::Path => "args.next().parse_path(name)?",
-                ArgType::String => "args.next().parse_str(name)?",
+                ArgType::Number => "args.next().parse_int(arg_name_)?",
+                ArgType::OsString => "args.next().parse_osstr(arg_name_)?",
+                ArgType::Path => "args.next().parse_path(arg_name_)?",
+                ArgType::String => "args.next().parse_str(arg_name_)?",
             }
         } else {
             match opt.ty_help {
-                ArgType::Number => "Some(args.next().parse_int(name)?)",
-                ArgType::OsString => "Some(args.next().parse_osstr(name)?)",
-                ArgType::Path => "Some(args.next().parse_path(name)?)",
-                ArgType::String => "Some(args.next().parse_str(name)?)",
+                ArgType::Number => "Some(args.next().parse_int(arg_name_)?)",
+                ArgType::OsString => "Some(args.next().parse_osstr(arg_name_)?)",
+                ArgType::Path => "Some(args.next().parse_path(arg_name_)?)",
+                ArgType::String => "Some(args.next().parse_str(arg_name_)?)",
             }
         };
 
         write!(
             matchers,
-            r#"Some(name @ "--{arg}") {short} => {name} = {value},"#,
+            r#"Some(arg_name_ @ "--{arg}") {short} => {name} = {value},"#,
             arg = to_arg_name(name)
         )
         .unwrap();
