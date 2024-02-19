@@ -357,7 +357,18 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         .collect::<String>();
     let positional_ident = ast
         .positional
-        .map(|opt| format!("{},", opt.name))
+        .map(|opt| {
+            if matches!(opt.property, ArgProperty::Positional { required: true }) {
+                format!(
+                    r#"{}: {}.required("{arg}")?,"#,
+                    opt.name,
+                    opt.name,
+                    arg = to_arg_name(&opt.name),
+                )
+            } else {
+                format!("{},", opt.name)
+            }
+        })
         .unwrap_or_default();
 
     let name = ast.name;
