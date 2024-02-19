@@ -245,14 +245,16 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
             .unwrap_or_default();
         let value = if opt.default.is_some() {
             match opt.ty_help {
-                ArgType::Number => "args.next().parse_int(arg_name_)?",
+                ArgType::Float => "args.next().parse_float(arg_name_)?",
+                ArgType::Integer => "args.next().parse_int(arg_name_)?",
                 ArgType::OsString => "args.next().parse_osstr(arg_name_)?",
                 ArgType::Path => "args.next().parse_path(arg_name_)?",
                 ArgType::String => "args.next().parse_str(arg_name_)?",
             }
         } else {
             match opt.ty_help {
-                ArgType::Number => "Some(args.next().parse_int(arg_name_)?)",
+                ArgType::Float => "Some(args.next().parse_float(arg_name_)?)",
+                ArgType::Integer => "Some(args.next().parse_int(arg_name_)?)",
                 ArgType::OsString => "Some(args.next().parse_osstr(arg_name_)?)",
                 ArgType::Path => "Some(args.next().parse_path(arg_name_)?)",
                 ArgType::String => "Some(args.next().parse_str(arg_name_)?)",
@@ -271,7 +273,8 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         Some(opt) => {
             let name = &opt.name;
             let value = match opt.ty_help {
-                ArgType::Number => r#"arg.parse_int("<POSITIONAL>")?"#,
+                ArgType::Float => r#"arg.parse_float("<POSITIONAL>")?"#,
+                ArgType::Integer => r#"arg.parse_int("<POSITIONAL>")?"#,
                 ArgType::OsString => r#"arg.parse_osstr("<POSITIONAL>")?"#,
                 ArgType::Path => r#"arg.parse_path("<POSITIONAL>")?"#,
                 ArgType::String => r#"arg.parse_str("<POSITIONAL>")?"#,

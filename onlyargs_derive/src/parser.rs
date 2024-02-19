@@ -47,7 +47,8 @@ pub(crate) struct ArgView<'a> {
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum ArgType {
-    Number,
+    Float,
+    Integer,
     OsString,
     Path,
     String,
@@ -251,9 +252,9 @@ const REQUIRED_OS_STRINGS: [&str; 4] = [
     "ffi::OsString",
     "OsString",
 ];
-const REQUIRED_NUMBERS: [&str; 14] = [
-    "f32", "f64", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128",
-    "usize",
+const REQUIRED_FLOATS: [&str; 2] = ["f32", "f64"];
+const REQUIRED_INTEGERS: [&str; 12] = [
+    "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize",
 ];
 const POSITIONAL_PATHS: [&str; 4] = [
     "Vec<::std::path::PathBuf>",
@@ -267,9 +268,8 @@ const POSITIONAL_OS_STRINGS: [&str; 4] = [
     "Vec<ffi::OsString>",
     "Vec<OsString>",
 ];
-const POSITIONAL_NUMBERS: [&str; 14] = [
-    "Vec<f32>",
-    "Vec<f64>",
+const POSITIONAL_FLOATS: [&str; 2] = ["Vec<f32>", "Vec<f64>"];
+const POSITIONAL_INTEGERS: [&str; 12] = [
     "Vec<i8>",
     "Vec<i16>",
     "Vec<i32>",
@@ -295,9 +295,8 @@ const OPTIONAL_OS_STRINGS: [&str; 4] = [
     "Option<ffi::OsString>",
     "Option<OsString>",
 ];
-const OPTIONAL_NUMBERS: [&str; 14] = [
-    "Option<f32>",
-    "Option<f64>",
+const OPTIONAL_FLOATS: [&str; 2] = ["Option<f32>", "Option<f64>"];
+const OPTIONAL_INTEGERS: [&str; 12] = [
     "Option<i8>",
     "Option<i16>",
     "Option<i32>",
@@ -316,17 +315,20 @@ impl ArgOption {
     fn new(name: Ident, short: Option<char>, doc: Vec<String>, path: &str) -> Result<Self, ()> {
         let optional = if OPTIONAL_PATHS.contains(&path)
             || OPTIONAL_OS_STRINGS.contains(&path)
-            || OPTIONAL_NUMBERS.contains(&path)
+            || OPTIONAL_FLOATS.contains(&path)
+            || OPTIONAL_INTEGERS.contains(&path)
             || path == "Option<String>"
             || POSITIONAL_PATHS.contains(&path)
             || POSITIONAL_OS_STRINGS.contains(&path)
-            || POSITIONAL_NUMBERS.contains(&path)
+            || POSITIONAL_FLOATS.contains(&path)
+            || POSITIONAL_INTEGERS.contains(&path)
             || path == "Vec<String>"
         {
             true
         } else if REQUIRED_PATHS.contains(&path)
             || REQUIRED_OS_STRINGS.contains(&path)
-            || REQUIRED_NUMBERS.contains(&path)
+            || REQUIRED_FLOATS.contains(&path)
+            || REQUIRED_INTEGERS.contains(&path)
             || path == "String"
         {
             false
@@ -346,18 +348,24 @@ impl ArgOption {
             ArgType::OsString
         } else if path == "String" || path == "Vec<String>" || path == "Option<String>" {
             ArgType::String
-        } else if OPTIONAL_NUMBERS.contains(&path)
-            || REQUIRED_NUMBERS.contains(&path)
-            || POSITIONAL_NUMBERS.contains(&path)
+        } else if OPTIONAL_FLOATS.contains(&path)
+            || REQUIRED_FLOATS.contains(&path)
+            || POSITIONAL_FLOATS.contains(&path)
         {
-            ArgType::Number
+            ArgType::Float
+        } else if OPTIONAL_INTEGERS.contains(&path)
+            || REQUIRED_INTEGERS.contains(&path)
+            || POSITIONAL_INTEGERS.contains(&path)
+        {
+            ArgType::Integer
         } else {
             unreachable!();
         };
 
         let positional = POSITIONAL_PATHS.contains(&path)
             || POSITIONAL_OS_STRINGS.contains(&path)
-            || POSITIONAL_NUMBERS.contains(&path)
+            || POSITIONAL_FLOATS.contains(&path)
+            || POSITIONAL_INTEGERS.contains(&path)
             || path == "Vec<String>";
 
         Ok(ArgOption {
@@ -384,7 +392,8 @@ impl ArgOption {
 impl ArgType {
     pub(crate) fn as_str(&self) -> &str {
         match self {
-            Self::Number => " NUMBER",
+            Self::Float => " FLOAT",
+            Self::Integer => " INTEGER",
             Self::OsString | Self::String => " STRING",
             Self::Path => " PATH",
         }
@@ -392,7 +401,7 @@ impl ArgType {
 
     pub(crate) fn converter(&self) -> &str {
         match self {
-            Self::Number => "",
+            Self::Float | Self::Integer => "",
             Self::OsString | Self::Path | Self::String => ".into()",
         }
     }
