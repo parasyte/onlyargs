@@ -1,0 +1,5 @@
+error: Only one short arg is allowed. `-m` also used on field `min`
+ --> compile_tests/conflicting_short_name.rs:4:5
+  |
+4 |     max: i32,
+  |     ^^^
