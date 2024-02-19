@@ -1,0 +1,5 @@
+error: #[required] can only be used on `Vec<T>`
+ --> compile_tests/required_bool.rs:4:20
+  |
+4 |     required_bool: bool,
+  |                    ^^^^

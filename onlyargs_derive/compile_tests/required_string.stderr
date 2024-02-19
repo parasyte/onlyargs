@@ -1,0 +1,5 @@
+error: #[required] can only be used on `Vec<T>`
+ --> compile_tests/required_string.rs:4:22
+  |
+4 |     required_string: String,
+  |                      ^^^^^^

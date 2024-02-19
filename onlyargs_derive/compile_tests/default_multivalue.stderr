@@ -1,0 +1,5 @@
+error: #[default(...)] can only be used on primitive types
+ --> compile_tests/default_multivalue.rs:4:11
+  |
+4 |     nums: Vec<u64>,
+  |           ^^^

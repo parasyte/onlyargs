@@ -1,0 +1,5 @@
+error: #[positional] can only be used on `Vec<T>`
+ --> compile_tests/positional_option.rs:4:11
+  |
+4 |     rest: Option<i32>,
+  |           ^^^^^^

@@ -1,5 +1,5 @@
 use myn::prelude::*;
-use proc_macro::{Delimiter, Ident, Literal, TokenStream};
+use proc_macro::{Delimiter, Ident, Literal, Span, TokenStream};
 
 #[derive(Debug)]
 pub(crate) struct ArgumentStruct {
@@ -33,8 +33,7 @@ pub(crate) struct ArgOption {
     pub(crate) ty_help: ArgType,
     pub(crate) doc: Vec<String>,
     pub(crate) default: Option<Literal>,
-    pub(crate) optional: bool,
-    pub(crate) positional: bool,
+    pub(crate) property: ArgProperty,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -52,6 +51,14 @@ pub(crate) enum ArgType {
     OsString,
     Path,
     String,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum ArgProperty {
+    Required,
+    Optional,
+    MultiValue { required: bool },
+    Positional { required: bool },
 }
 
 impl ArgumentStruct {
@@ -72,9 +79,9 @@ impl ArgumentStruct {
         for field in fields {
             match field {
                 Argument::Flag(flag) => flags.push(flag),
-                Argument::Option(opt) => match (opt.positional, &positional) {
-                    (true, None) => positional = Some(opt),
-                    (true, Some(_)) => {
+                Argument::Option(opt) => match (opt.property, &positional) {
+                    (ArgProperty::Positional { .. }, None) => positional = Some(opt),
+                    (ArgProperty::Positional { .. }, Some(_)) => {
                         return Err(spanned_error(
                             "Positional arguments can only be specified once.",
                             opt.name.span(),
@@ -124,6 +131,8 @@ impl Argument {
             let mut default = None;
             let mut long = false;
             let mut short = None;
+            let mut required = false;
+            let mut positional = false;
 
             for mut attr in attrs {
                 let name = attr.name.to_string();
@@ -141,6 +150,8 @@ impl Argument {
                         })?);
                     }
                     "long" => long = true,
+                    "positional" => positional = true,
+                    "required" => required = true,
                     "short" => {
                         let mut stream = attr.tree.expect_group(Delimiter::Parenthesis)?;
                         let lit = stream.try_lit()?;
@@ -167,6 +178,19 @@ impl Argument {
             };
 
             if path == "bool" {
+                if required {
+                    return Err(spanned_error(
+                        "#[required] can only be used on `Vec<T>`",
+                        span,
+                    ));
+                }
+                if positional {
+                    return Err(spanned_error(
+                        "#[positional] can only be used on `Vec<T>`",
+                        span,
+                    ));
+                }
+
                 let mut flag = ArgFlag::new(name, short, doc);
                 match default {
                     Some(lit) if lit.to_string() == r#""true""# => flag.default = true,
@@ -174,23 +198,25 @@ impl Argument {
                 }
                 args.push(Self::Flag(flag));
             } else {
-                let mut opt = ArgOption::new(name, short, doc, &path).map_err(|()| {
-                    spanned_error(
-                        "Expected bool, PathBuf, String, OsString, integer, or float",
-                        span,
-                    )
-                })?;
+                let mut opt = ArgOption::new(span, name, short, doc, &path)?;
 
-                opt.default = default;
+                apply_default(span, &mut opt, default)?;
+                apply_required(span, &mut opt, required)?;
+                apply_positional(span, &mut opt, positional)?;
+
                 if let Some(default) = opt.default.as_ref() {
-                    opt.optional = false;
                     let default = default.to_string();
                     if let Some(line) = opt.doc.last_mut() {
                         line.push_str(&format!(" [default: {default}]"));
                     } else {
                         opt.doc.push(format!("[default: {default}]"));
                     }
-                } else if !opt.optional {
+                } else if matches!(
+                    opt.property,
+                    ArgProperty::Required
+                        | ArgProperty::Positional { required: true }
+                        | ArgProperty::MultiValue { required: true }
+                ) {
                     if let Some(line) = opt.doc.last_mut() {
                         line.push_str(" [required]");
                     } else {
@@ -204,6 +230,59 @@ impl Argument {
 
         Ok(args)
     }
+}
+
+fn apply_default(
+    span: Span,
+    opt: &mut ArgOption,
+    default: Option<Literal>,
+) -> Result<(), TokenStream> {
+    match (default.is_some(), &opt.property) {
+        (true, ArgProperty::Required) => opt.default = default,
+        (true, _) => {
+            return Err(spanned_error(
+                "#[default(...)] can only be used on primitive types",
+                span,
+            ));
+        }
+        (false, _) => (),
+    }
+
+    Ok(())
+}
+
+fn apply_required(span: Span, opt: &mut ArgOption, required: bool) -> Result<(), TokenStream> {
+    match (required, &mut opt.property) {
+        (false, _) => (),
+        (true, ArgProperty::MultiValue { required }) => *required = true,
+        _ => {
+            return Err(spanned_error(
+                "#[required] can only be used on `Vec<T>`",
+                span,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn apply_positional(span: Span, opt: &mut ArgOption, positional: bool) -> Result<(), TokenStream> {
+    match (positional, &opt.property) {
+        (true, ArgProperty::MultiValue { required }) => {
+            opt.property = ArgProperty::Positional {
+                required: *required,
+            }
+        }
+        (true, _) => {
+            return Err(spanned_error(
+                "#[positional] can only be used on `Vec<T>`",
+                span,
+            ));
+        }
+        (false, _) => (),
+    }
+
+    Ok(())
 }
 
 impl ArgFlag {
@@ -256,20 +335,20 @@ const REQUIRED_FLOATS: [&str; 2] = ["f32", "f64"];
 const REQUIRED_INTEGERS: [&str; 12] = [
     "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize",
 ];
-const POSITIONAL_PATHS: [&str; 4] = [
+const MULTI_PATHS: [&str; 4] = [
     "Vec<::std::path::PathBuf>",
     "Vec<std::path::PathBuf>",
     "Vec<path::PathBuf>",
     "Vec<PathBuf>",
 ];
-const POSITIONAL_OS_STRINGS: [&str; 4] = [
+const MULTI_OS_STRINGS: [&str; 4] = [
     "Vec<::std::ffi::OsString>",
     "Vec<std::ffi::OsString>",
     "Vec<ffi::OsString>",
     "Vec<OsString>",
 ];
-const POSITIONAL_FLOATS: [&str; 2] = ["Vec<f32>", "Vec<f64>"];
-const POSITIONAL_INTEGERS: [&str; 12] = [
+const MULTI_FLOATS: [&str; 2] = ["Vec<f32>", "Vec<f64>"];
+const MULTI_INTEGERS: [&str; 12] = [
     "Vec<i8>",
     "Vec<i16>",
     "Vec<i32>",
@@ -312,61 +391,68 @@ const OPTIONAL_INTEGERS: [&str; 12] = [
 ];
 
 impl ArgOption {
-    fn new(name: Ident, short: Option<char>, doc: Vec<String>, path: &str) -> Result<Self, ()> {
-        let optional = if OPTIONAL_PATHS.contains(&path)
+    fn new(
+        span: Span,
+        name: Ident,
+        short: Option<char>,
+        doc: Vec<String>,
+        path: &str,
+    ) -> Result<Self, TokenStream> {
+        // Parse the argument type and decide what properties it should start with.
+        let property = if OPTIONAL_PATHS.contains(&path)
             || OPTIONAL_OS_STRINGS.contains(&path)
             || OPTIONAL_FLOATS.contains(&path)
             || OPTIONAL_INTEGERS.contains(&path)
             || path == "Option<String>"
-            || POSITIONAL_PATHS.contains(&path)
-            || POSITIONAL_OS_STRINGS.contains(&path)
-            || POSITIONAL_FLOATS.contains(&path)
-            || POSITIONAL_INTEGERS.contains(&path)
+        {
+            ArgProperty::Optional
+        } else if MULTI_PATHS.contains(&path)
+            || MULTI_OS_STRINGS.contains(&path)
+            || MULTI_FLOATS.contains(&path)
+            || MULTI_INTEGERS.contains(&path)
             || path == "Vec<String>"
         {
-            true
+            ArgProperty::MultiValue { required: false }
         } else if REQUIRED_PATHS.contains(&path)
             || REQUIRED_OS_STRINGS.contains(&path)
             || REQUIRED_FLOATS.contains(&path)
             || REQUIRED_INTEGERS.contains(&path)
             || path == "String"
         {
-            false
+            ArgProperty::Required
         } else {
-            return Err(());
+            return Err(spanned_error(
+                "Expected bool, PathBuf, String, OsString, integer, or float",
+                span,
+            ));
         };
 
+        // Decide the type to show in the help message.
         let ty_help = if OPTIONAL_PATHS.contains(&path)
             || REQUIRED_PATHS.contains(&path)
-            || POSITIONAL_PATHS.contains(&path)
+            || MULTI_PATHS.contains(&path)
         {
             ArgType::Path
         } else if OPTIONAL_OS_STRINGS.contains(&path)
             || REQUIRED_OS_STRINGS.contains(&path)
-            || POSITIONAL_OS_STRINGS.contains(&path)
+            || MULTI_OS_STRINGS.contains(&path)
         {
             ArgType::OsString
         } else if path == "String" || path == "Vec<String>" || path == "Option<String>" {
             ArgType::String
         } else if OPTIONAL_FLOATS.contains(&path)
             || REQUIRED_FLOATS.contains(&path)
-            || POSITIONAL_FLOATS.contains(&path)
+            || MULTI_FLOATS.contains(&path)
         {
             ArgType::Float
         } else if OPTIONAL_INTEGERS.contains(&path)
             || REQUIRED_INTEGERS.contains(&path)
-            || POSITIONAL_INTEGERS.contains(&path)
+            || MULTI_INTEGERS.contains(&path)
         {
             ArgType::Integer
         } else {
             unreachable!();
         };
-
-        let positional = POSITIONAL_PATHS.contains(&path)
-            || POSITIONAL_OS_STRINGS.contains(&path)
-            || POSITIONAL_FLOATS.contains(&path)
-            || POSITIONAL_INTEGERS.contains(&path)
-            || path == "Vec<String>";
 
         Ok(ArgOption {
             name,
@@ -374,8 +460,7 @@ impl ArgOption {
             ty_help,
             doc,
             default: None,
-            optional,
-            positional,
+            property,
         })
     }
 
