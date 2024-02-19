@@ -13,6 +13,13 @@ license = "MIT"
 [lib]
 proc-macro = true
 
+[[test]]
+name = "compile_and_fail"
+path = "compile_tests/compiler.rs"
+
 [dependencies]
 myn = "0.2.1"
 onlyargs = { version = "0.1", path = ".." }
+
+[dev-dependencies]
+trybuild = "1"
