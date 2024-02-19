@@ -89,7 +89,7 @@
 //! | `String`         | UTF-8 encoded string option.                     |
 //!
 //! Additionally, some wrapper and composite types are also available, where the type `T` must be
-//! one of the primitive types listed above.
+//! one of the primitive types listed above (except `bool`).
 //!
 //! | Type        | Description                       |
 //! |-------------|-----------------------------------|
