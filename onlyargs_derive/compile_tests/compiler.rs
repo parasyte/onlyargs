@@ -28,7 +28,9 @@ fn compile_tests() {
     t.pass("compile_tests/positional_pathbuf.rs");
     t.pass("compile_tests/positional_string.rs");
     t.pass("compile_tests/positional_u8.rs");
+    t.pass("compile_tests/positional_u128.rs");
     t.pass("compile_tests/positional_usize.rs");
+    t.compile_fail("compile_tests/conflicting_positional.rs");
 
     t.pass("compile_tests/empty.rs");
     t.pass("compile_tests/optional.rs");
