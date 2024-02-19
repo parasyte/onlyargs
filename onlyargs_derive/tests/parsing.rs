@@ -84,3 +84,26 @@ fn test_required_multivalue() -> Result<(), CliError> {
 
     Ok(())
 }
+
+#[test]
+fn test_required_positional() -> Result<(), CliError> {
+    #[derive(Debug, OnlyArgs)]
+    struct Args {
+        #[required]
+        #[positional]
+        rest: Vec<String>,
+    }
+
+    // Empty positional is not allowed.
+    assert!(matches!(
+        dbg!(Args::parse(vec![])),
+        Err(CliError::MissingRequired(name)) if name == "rest",
+    ));
+
+    // At least one positional is required.
+    let args = Args::parse(["Bob"].into_iter().map(OsString::from).collect())?;
+
+    assert_eq!(args.rest, ["Bob"]);
+
+    Ok(())
+}
