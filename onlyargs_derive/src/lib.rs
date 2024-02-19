@@ -51,6 +51,11 @@
 //!   - This behavior can be suppressed with the `#[long]` attribute (see below).
 //!   - Alternatively, the `#[short('…')]` attribute can be used to set a specific short name.
 //!
+//! # Footer
+//!
+//! The `#[footer = "..."]` attribute on the argument struct will add lines to the bottom of the
+//! help message. It can be used multiple times.
+//!
 //! # Provided arguments
 //!
 //! `--help|-h` and `--version|-V` arguments are automatically generated. When the parser encounters
@@ -69,6 +74,9 @@
 //!   - Accepts string literals for `PathBuf`.
 //!   - Accepts numeric literals for numeric types.
 //!   - Accepts `true` and `false` idents and `"true"` and `"false"` string literals for `boolean`.
+//! - `#[required]`: Can be used on `Vec<T>` to require at least one value. This ensures the vector
+//!   is never empty.
+//! - `#[positional]`: Makes a `Vec<T>` the dumping ground for positional arguments.
 //!
 //! # Supported types
 //!
@@ -91,10 +99,10 @@
 //! Additionally, some wrapper and composite types are also available, where the type `T` must be
 //! one of the primitive types listed above (except `bool`).
 //!
-//! | Type        | Description                       |
-//! |-------------|-----------------------------------|
-//! | `Option<T>` | An optional argument.             |
-//! | `Vec<T>`    | Positional arguments (see below). |
+//! | Type        | Description                                                |
+//! |-------------|------------------------------------------------------------|
+//! | `Option<T>` | An optional argument.                                      |
+//! | `Vec<T>`    | Multivalue and positional arguments (see `#[positional]`). |
 //!
 //! In argument parsing parlance, "flags" are simple boolean values; the argument does not require
 //! a value. For example, the argument `--help`.
@@ -102,18 +110,15 @@
 //! "Options" carry a value and the argument parser requires the value to directly follow the
 //! argument name. Arguments can be made optional with `Option<T>`.
 //!
-//! ## Positional arguments
-//!
-//! If the struct contains a field with a vector type, it _must_ be the only vector field. This
-//! becomes the "dumping ground" for all positional arguments, which are any args that do not match
-//! an existing field, or any arguments following the `--` "stop parsing" sentinel.
+//! Multivalue arguments can be passed on the command line by using the same argument multiple
+//! times.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 #![allow(clippy::let_underscore_untyped)]
 
-use crate::parser::{ArgFlag, ArgOption, ArgType, ArgView, ArgumentStruct};
+use crate::parser::{ArgFlag, ArgOption, ArgProperty, ArgType, ArgView, ArgumentStruct};
 use myn::utils::spanned_error;
 use proc_macro::{Ident, Span, TokenStream};
 use std::{collections::HashMap, fmt::Write as _, str::FromStr as _};
@@ -122,7 +127,10 @@ mod parser;
 
 /// See the [root module documentation](crate) for the DSL specification.
 #[allow(clippy::too_many_lines)]
-#[proc_macro_derive(OnlyArgs, attributes(footer, default, long, short))]
+#[proc_macro_derive(
+    OnlyArgs,
+    attributes(footer, default, long, positional, required, short)
+)]
 pub fn derive_parser(input: TokenStream) -> TokenStream {
     let ast = match ArgumentStruct::parse(input) {
         Ok(ast) => ast,
@@ -204,7 +212,15 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
             if let Some(default) = opt.default.as_ref() {
                 format!("let mut {name} = {default}{};", opt.ty_help.converter())
             } else {
-                format!("let mut {name} = None;")
+                match opt.property {
+                    ArgProperty::Optional | ArgProperty::Required => {
+                        format!("let mut {name} = None;")
+                    }
+                    ArgProperty::MultiValue { .. } => {
+                        format!("let mut {name} = vec![];")
+                    }
+                    ArgProperty::Positional { .. } => unreachable!(),
+                }
             }
         })
         .collect::<String>();
@@ -243,27 +259,41 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
             .short
             .map(|ch| format!(r#"| Some(arg_name_ @ "-{ch}")"#))
             .unwrap_or_default();
-        let value = if opt.default.is_some() {
+        let assignment = if opt.default.is_some() {
             match opt.ty_help {
-                ArgType::Float => "args.next().parse_float(arg_name_)?",
-                ArgType::Integer => "args.next().parse_int(arg_name_)?",
-                ArgType::OsString => "args.next().parse_osstr(arg_name_)?",
-                ArgType::Path => "args.next().parse_path(arg_name_)?",
-                ArgType::String => "args.next().parse_str(arg_name_)?",
+                ArgType::Float => format!("{name} = args.next().parse_float(arg_name_)?"),
+                ArgType::Integer => format!("{name} = args.next().parse_int(arg_name_)?"),
+                ArgType::OsString => format!("{name} = args.next().parse_osstr(arg_name_)?"),
+                ArgType::Path => format!("{name} = args.next().parse_path(arg_name_)?"),
+                ArgType::String => format!("{name} = args.next().parse_str(arg_name_)?"),
             }
         } else {
-            match opt.ty_help {
-                ArgType::Float => "Some(args.next().parse_float(arg_name_)?)",
-                ArgType::Integer => "Some(args.next().parse_int(arg_name_)?)",
-                ArgType::OsString => "Some(args.next().parse_osstr(arg_name_)?)",
-                ArgType::Path => "Some(args.next().parse_path(arg_name_)?)",
-                ArgType::String => "Some(args.next().parse_str(arg_name_)?)",
+            match opt.property {
+                ArgProperty::Optional | ArgProperty::Required => match opt.ty_help {
+                    ArgType::Float => format!("{name} = Some(args.next().parse_float(arg_name_)?)"),
+                    ArgType::Integer => format!("{name} = Some(args.next().parse_int(arg_name_)?)"),
+                    ArgType::OsString => {
+                        format!("{name} = Some(args.next().parse_osstr(arg_name_)?)")
+                    }
+                    ArgType::Path => format!("{name} = Some(args.next().parse_path(arg_name_)?)"),
+                    ArgType::String => format!("{name} = Some(args.next().parse_str(arg_name_)?)"),
+                },
+                ArgProperty::MultiValue { .. } => match opt.ty_help {
+                    ArgType::Float => format!("{name}.push(args.next().parse_float(arg_name_)?)"),
+                    ArgType::Integer => format!("{name}.push(args.next().parse_int(arg_name_)?)"),
+                    ArgType::OsString => {
+                        format!("{name}.push(args.next().parse_osstr(arg_name_)?)")
+                    }
+                    ArgType::Path => format!("{name}.push(args.next().parse_path(arg_name_)?)"),
+                    ArgType::String => format!("{name}.push(args.next().parse_str(arg_name_)?)"),
+                },
+                ArgProperty::Positional { .. } => unreachable!(),
             }
         };
 
         write!(
             matchers,
-            r#"Some(arg_name_ @ "--{arg}") {short} => {name} = {value},"#,
+            r#"Some(arg_name_ @ "--{arg}") {short} => {assignment},"#,
             arg = to_arg_name(name)
         )
         .unwrap();
@@ -309,7 +339,13 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         .iter()
         .map(|opt| {
             let name = &opt.name;
-            if opt.default.is_some() || opt.optional {
+            let optional = matches!(
+                opt.property,
+                ArgProperty::Optional
+                    | ArgProperty::Positional { required: false }
+                    | ArgProperty::MultiValue { required: false }
+            );
+            if opt.default.is_some() || optional {
                 format!("{name},")
             } else {
                 format!(

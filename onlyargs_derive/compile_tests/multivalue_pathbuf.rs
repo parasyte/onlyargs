@@ -1,7 +1,6 @@
 #[derive(Debug, onlyargs_derive::OnlyArgs)]
 struct Args {
-    #[positional]
-    rest: Vec<i128>,
+    paths: Vec<std::path::PathBuf>,
 }
 
 fn main() {}

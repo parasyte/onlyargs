@@ -1,7 +1,7 @@
 #[derive(Debug, onlyargs_derive::OnlyArgs)]
 struct Args {
-    #[positional]
-    rest: Vec<i128>,
+    #[default(123)]
+    opt_num: Option<u64>,
 }
 
 fn main() {}

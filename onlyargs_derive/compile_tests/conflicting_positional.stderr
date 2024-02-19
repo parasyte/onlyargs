@@ -1,5 +1,5 @@
 error: Positional arguments can only be specified once.
- --> compile_tests/conflicting_positional.rs:4:5
+ --> compile_tests/conflicting_positional.rs:6:5
   |
-4 |     more: Vec<String>,
+6 |     more: Vec<String>,
   |     ^^^^

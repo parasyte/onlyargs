@@ -1,0 +1,5 @@
+error: #[default(...)] can only be used on primitive types
+ --> compile_tests/default_positional.rs:5:11
+  |
+5 |     nums: Vec<u64>,
+  |           ^^^

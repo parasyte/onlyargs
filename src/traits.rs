@@ -190,3 +190,18 @@ impl<T> RequiredArgExt for Option<T> {
         self.ok_or_else(|| CliError::MissingRequired(name.into()))
     }
 }
+
+impl<T> RequiredArgExt for Vec<T> {
+    type Inner = Vec<T>;
+
+    fn required<N>(self, name: N) -> Result<Self::Inner, CliError>
+    where
+        N: Into<String>,
+    {
+        if self.is_empty() {
+            Err(CliError::MissingRequired(name.into()))
+        } else {
+            Ok(self)
+        }
+    }
+}

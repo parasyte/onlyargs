@@ -1,0 +1,5 @@
+error: #[default(...)] can only be used on primitive types
+ --> compile_tests/default_option.rs:4:14
+  |
+4 |     opt_num: Option<u64>,
+  |              ^^^^^^
