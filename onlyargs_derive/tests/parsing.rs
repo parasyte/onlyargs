@@ -107,3 +107,55 @@ fn test_required_positional() -> Result<(), CliError> {
 
     Ok(())
 }
+
+#[test]
+fn test_positional_escape() -> Result<(), CliError> {
+    #[derive(Debug, OnlyArgs)]
+    struct Args {
+        opt_str: Option<String>,
+
+        #[positional]
+        rest: Vec<String>,
+    }
+
+    // All args are optional.
+    let args = Args::parse(vec![])?;
+
+    assert_eq!(args.opt_str, None);
+    assert!(args.rest.is_empty());
+
+    // Captures positional args.
+    let args = Args::parse(
+        ["Alice", "--name", "Bob"]
+            .into_iter()
+            .map(OsString::from)
+            .collect(),
+    )?;
+
+    assert_eq!(args.opt_str, None);
+    assert_eq!(args.rest, ["Alice", "--name", "Bob"]);
+
+    // Captures the optional string anywhere...
+    let args = Args::parse(
+        ["Alice", "--opt-str", "--name", "Bob"]
+            .into_iter()
+            .map(OsString::from)
+            .collect(),
+    )?;
+
+    assert_eq!(args.opt_str, Some("--name".to_string()));
+    assert_eq!(args.rest, ["Alice", "Bob"]);
+
+    // ... Unless the `--` escape sequence is encountered.
+    let args = Args::parse(
+        ["Alice", "--", "--opt-str", "--name", "Bob"]
+            .into_iter()
+            .map(OsString::from)
+            .collect(),
+    )?;
+
+    assert_eq!(args.opt_str, None);
+    assert_eq!(args.rest, ["Alice", "--opt-str", "--name", "Bob"]);
+
+    Ok(())
+}
