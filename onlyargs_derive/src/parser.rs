@@ -389,6 +389,13 @@ impl ArgType {
             Self::Path => " PATH",
         }
     }
+
+    pub(crate) fn converter(&self) -> &str {
+        match self {
+            Self::Number => "",
+            Self::OsString | Self::Path | Self::String => ".into()",
+        }
+    }
 }
 
 #[allow(clippy::needless_pass_by_value)]

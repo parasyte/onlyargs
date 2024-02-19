@@ -202,7 +202,7 @@ pub fn derive_parser(input: TokenStream) -> TokenStream {
         .map(|opt| {
             let name = &opt.name;
             if let Some(default) = opt.default.as_ref() {
-                format!("let mut {name} = {default}.into();")
+                format!("let mut {name} = {default}{};", opt.ty_help.converter())
             } else {
                 format!("let mut {name} = None;")
             }
