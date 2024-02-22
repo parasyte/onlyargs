@@ -9,6 +9,10 @@ rust-version = "1.62.0"
 keywords = ["cli", "arg", "argument", "parse", "parser"]
 categories = ["command-line-interface"]
 license = "MIT"
+exclude = [
+    "/.github",
+    "/MSRV.md",
+]
 
 [dependencies]
 # No dependencies!
